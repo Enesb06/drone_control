@@ -1,0 +1,62 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ================= BLUETOOTH VE KONUM İZİNLERİ - BURAYA EKLENDİ ================= -->
+    <!-- Android 12 ve üzeri için yeni Bluetooth izinleri -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Android 11 ve altı için eski izinler -->
+    <!-- maxSdkVersion="30" ile bu izinlerin sadece eski sürümlerde istenmesini sağlıyoruz. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!--
+        ACCESS_COARSE_LOCATION izni, ACCESS_FINE_LOCATION tarafından kapsanır ama bazı
+        eski cihazlar için eklemek iyi bir alışkanlıktır.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30"/>
+    <!-- =================================================================================== -->
+
+    <application
+        android:label="uptime_monitor_ble"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!--
+                 Bu meta-data, Flutter UI başlatılırken görünen başlangıç temasını belirtir.
+            -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"
+                />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!--
+             Bu meta-data Flutter araçları tarafından kullanılır, silmeyin.
+        -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <!--
+        Bu bölüm, metin işleme gibi niyetleri sorgulamak için kullanılır.
+        Flutter'ın kendi motoru tarafından ihtiyaç duyulur.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>
