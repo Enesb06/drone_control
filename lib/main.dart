@@ -1,48 +1,45 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-// import 'package:flutter_blue_plus/flutter_blue_plus.dart'; // YORUM SATIRI
-// import 'package:permission_handler/permission_handler.dart'; // YORUM SATIRI
-import 'motor_status_page.dart'; // Bu sayfa aktif kalacak
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'motor_status_page.dart';
+// import 'dart:typed_data'; // Artık uptime için kullanılmadığı için kaldırabiliriz
 
-/*
-// ----- BLE AYARLARI (GEÇİCİ OLARAK DEVRE DIŞI) -----
+// ----- YENİ BLE MİMARİSİNE GÖRE UUID'LER -----
+// Not: ESP32 kodundaki UUID'lerle aynı olmalı
 final Guid serviceUuid = Guid("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
-final Guid uptimeCharacteristicUuid = Guid("beb5483e-36e1-4688-b7f5-ea07361b26a8");
-final Guid messageCharacteristicUuid = Guid("a1b2c3d4-e5f6-7890-1234-567890abcdef");
-const String targetDeviceName = "ESP32_Uptime_Monitor";
-*/
+// Uptime Characteristic UUID'si ESP32 kodunda tanımlı olmadığı için kaldırıldı.
+// Eğer ESP32'den çalışma süresi verisi de almak isterseniz, ESP32 koduna eklemeniz gerekir.
+// final Guid uptimeCharacteristicUuid = Guid("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+
+// Flutter uygulamasının arayacağı cihaz adı, ESP32 kodundaki DEVICE_NAME ile AYNI OLMALI
+const String targetDeviceName = "ESP32_Graph_Tester"; // <-- BURAYI DEĞİŞTİRDİK
 
 void main() {
-  /*
-  // Donanım izinleri ve BLE başlatma kodları geçici olarak devre dışı
   if (Platform.isAndroid) {
     WidgetsFlutterBinding.ensureInitialized();
     [
       Permission.bluetooth,
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
-      Permission.location,
+      Permission
+          .location, // Android 12 öncesi Bluetooth için konum izni gerekliydi.
     ].request().then((status) {
-      runApp(const UptimeMonitorApp());
+      runApp(const MotorMonitorApp());
     });
   } else {
-    runApp(const UptimeMonitorApp());
+    runApp(const MotorMonitorApp());
   }
-  */
-  // Sadece uygulamayı çalıştır
-  runApp(const UptimeMonitorApp());
 }
 
-class UptimeMonitorApp extends StatelessWidget {
-  const UptimeMonitorApp({super.key});
+class MotorMonitorApp extends StatelessWidget {
+  const MotorMonitorApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      // Proje adını daha genel bir hale getirebiliriz
-      title: 'Motor Kontrol Arayüzü',
+      title: 'ESP32 Motor Monitörü',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -67,226 +64,216 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  /*
-  // ----- BLE İLE İLGİLİ TÜM DEĞİŞKENLER YORUM SATIRINDA -----
   BluetoothDevice? _esp32Device;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
-  StreamSubscription<List<int>>? _uptimeNotificationSubscription;
-  StreamSubscription<List<int>>? _messageNotificationSubscription;
+  // Uptime karakteristiği kaldırıldığı için bu abonelik de kaldırıldı.
+  // StreamSubscription<List<int>>? _uptimeNotificationSubscription;
 
   String _statusMessage = "Başlatılıyor...";
-  String _uptimeMessage = "Bağlantı bekleniyor...";
-  String _lastMessage = "Henüz mesaj alınmadı.";
+  // Uptime mesajı kaldırıldı.
+  // String _uptimeMessage = "Bağlantı bekleniyor...";
   bool _isConnected = false;
   bool _isConnecting = false;
   bool _isScanning = false;
-  */
 
   @override
   void initState() {
     super.initState();
-    // _startScan(); // BLE taraması devre dışı
+    _startScan();
   }
 
-  /*
-  // ----- TÜM BLE FONKSİYONLARI YORUM SATIRINDA -----
-
+  // Sadece ilgili abonelikleri temizle
   Future<void> _cleanupSubscriptions() async {
-    // ...
+    // _uptimeNotificationSubscription?.cancel(); // Kaldırıldı
+    await _connectionStateSubscription?.cancel();
+    await _scanSubscription?.cancel();
   }
 
   void _startScan() {
-    // ...
+    if (_isScanning || _isConnected || _isConnecting) return;
+    setState(() {
+      _isScanning = true;
+      _statusMessage = "Cihaz aranıyor...";
+    });
+
+    FlutterBluePlus.startScan(
+      withServices: [
+        serviceUuid,
+      ], // Sadece belirtilen servis UUID'sini içeren cihazları tara
+      timeout: const Duration(seconds: 15),
+    );
+
+    _scanSubscription = FlutterBluePlus.scanResults.listen(
+      (results) {
+        if (results.isNotEmpty) {
+          // Cihaz adını kontrol ederek doğru cihazı bul
+          var foundDevice = results.firstWhere(
+            (result) => result.device.platformName == targetDeviceName,
+            orElse: () => throw Exception(
+              'Cihaz bulunamadı: $targetDeviceName',
+            ), // Cihaz bulunamazsa hata fırlat
+          );
+
+          if (foundDevice != null) {
+            FlutterBluePlus.stopScan();
+            _connectToDevice(foundDevice.device);
+          }
+        }
+      },
+      onError: (e) {
+        // Hata durumunda (örn. orElse hatası)
+        if (mounted) {
+          FlutterBluePlus.stopScan();
+          setState(() {
+            _isScanning = false;
+            _statusMessage = "Tarama Hatası: ${e.toString()}";
+          });
+        }
+      },
+    );
+
+    Timer(const Duration(seconds: 15), () {
+      if (mounted && _isScanning) {
+        FlutterBluePlus.stopScan();
+        setState(() {
+          _isScanning = false;
+          _statusMessage = "$targetDeviceName bulunamadı.";
+        });
+      }
+    });
   }
 
   Future<void> _connectToDevice(BluetoothDevice device) async {
-    // ...
+    _scanSubscription?.cancel();
+    _isScanning = false;
+    if (_isConnected || _isConnecting) return;
+
+    setState(() {
+      _isConnecting = true;
+      _esp32Device = device;
+      _statusMessage = "Bağlanılıyor...";
+    });
+
+    _connectionStateSubscription = device.connectionState.listen((state) {
+      if (mounted) {
+        if (state == BluetoothConnectionState.connected) {
+          _onDeviceConnected();
+        } else if (state == BluetoothConnectionState.disconnected) {
+          _stopAllActivities("Bağlantı koptu.", performDisconnect: false);
+        }
+      }
+    });
+
+    try {
+      await device.connect(timeout: const Duration(seconds: 15));
+    } catch (e) {
+      if (mounted) _stopAllActivities("Bağlantı başarısız: $e");
+    }
   }
 
   void _onDeviceConnected() async {
-    // ...
+    if (!mounted) return;
+    setState(() {
+      _isConnected = true;
+      _isConnecting = false;
+      _statusMessage = "Bağlandı!";
+    });
+    // Servisleri keşfet, ancak artık uptime karakteristiklerini aramıyoruz
+    await _discoverServices();
   }
 
   Future<void> _discoverServices() async {
-    // ...
+    if (_esp32Device == null) return;
+    await _esp32Device!.discoverServices();
+    // Normalde burada servis ve karakteristikler kontrol edilirdi.
+    // Ancak bu sayfada sadece bağlantı kurulduğu için,
+    // motor_status_page'de ilgili servis ve karakteristikler aranacak.
   }
 
-  Future<void> _subscribeToCharacteristics(List<BluetoothCharacteristic> characteristics) async {
-    // ...
-  }
-  
-  Future<void> _subscribeToNotification(
-    BluetoothCharacteristic characteristic,
-    void Function(List<int> value) onData,
-  ) async {
-    // ...
-  }
-
-  void _handleUptimeData(List<int> value) {
-    // ...
-  }
-
-  void _handleMessageData(List<int> value) {
-    // ...
-  }
-
-  String _formatDuration(int totalSeconds) {
-    // ...
-  }
+  // Uptime veri işleme fonksiyonu kaldırıldı.
+  // void _handleUptimeData(List<int> value) { ... }
+  // Süre formatlama fonksiyonu kaldırıldı.
+  // String _formatDuration(int totalSeconds) { ... }
 
   void _stopAllActivities(String message, {bool performDisconnect = true}) {
-    // ...
+    if (performDisconnect) _esp32Device?.disconnect();
+    _cleanupSubscriptions();
+    if (mounted) {
+      setState(() {
+        _isScanning = false;
+        _isConnecting = false;
+        _isConnected = false;
+        _statusMessage = message;
+        // _uptimeMessage = "Bağlantı bekleniyor..."; // Kaldırıldı
+      });
+    }
   }
-  */
 
   @override
   void dispose() {
-    // _stopAllActivities("Uygulama kapatıldı."); // BLE temizliği devre dışı
+    _stopAllActivities("Uygulama kapatıldı.");
     super.dispose();
   }
 
-  // --- YENİ, TASARIM ODAKLI BUILD METODU ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ana Sayfa'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: Text(targetDeviceName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.show_chart_rounded),
+            tooltip: 'Canlı Veri Grafiği', // Tooltip güncellendi
+            onPressed: _isConnected
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            MotorStatusPage(device: _esp32Device!),
+                      ),
+                    );
+                  }
+                : null, // Bağlı değilse buton pasif
+          ),
+        ],
       ),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.engineering_outlined,
-                size: 100,
-                color: Colors.blueAccent,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_isScanning || _isConnecting)
+              const CircularProgressIndicator()
+            else
+              Icon(
+                _isConnected
+                    ? Icons.bluetooth_connected
+                    : Icons.bluetooth_disabled,
+                size: 80,
+                color: _isConnected ? Colors.greenAccent : Colors.grey,
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'Motor Kontrol Sistemi',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
+            const SizedBox(height: 20),
+            Text(_statusMessage, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 10),
+            // Uptime mesajı kaldırıldı.
+            /*
+            if (_isConnected)
               Text(
-                'Motor durumlarını görüntülemek için devam edin.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
-                ),
+                "Çalışma Süresi: $_uptimeMessage",
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 50),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MotorStatusPage(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: const Text('Motorları Görüntüle'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /*
-  // ----- ESKİ BUILD METODU VE YARDIMCI WIDGET'I YORUM SATIRINDA -----
-  
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("ESP32 Canlı Monitor"),
-        elevation: 0,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: <Widget>[
-              Column(
-                children: [
-                  if (_isScanning || _isConnecting)
-                    const CircularProgressIndicator()
-                  else
-                    Icon(
-                      _isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                      size: 40,
-                      color: _isConnected ? Colors.greenAccent : Colors.grey.shade600,
-                    ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _statusMessage,
-                    style: const TextStyle(fontSize: 16, color: Colors.white70),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-              _buildInfoCard(
-                icon: Icons.timer_outlined,
-                color: Colors.blueAccent,
-                title: 'Çalışma Süresi',
-                value: _uptimeMessage,
-              ),
-              _buildInfoCard(
-                icon: Icons.chat_bubble_outline_rounded,
-                color: Colors.purpleAccent,
-                title: 'Gelen Son Mesaj',
-                value: _lastMessage,
-                isItalic: true,
-              ),
-            ],
-          ),
+            */
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: (_isConnected || _isScanning || _isConnecting) ? null : _startScan,
-        backgroundColor: (_isConnected || _isScanning || _isConnecting) ? Colors.grey.shade800 : Theme.of(context).colorScheme.secondary,
+        onPressed: (_isConnected || _isConnecting || _isScanning)
+            ? null // Zaten bağlı/bağlanıyor/tarıyorsa pasif
+            : _startScan, // Değilse taramayı başlat
         label: const Text("Tekrar Tara"),
         icon: const Icon(Icons.search),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
-
-  Widget _buildInfoCard({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String value,
-    bool isItalic = false,
-  }) {
-    return Container(
-      // ...
-    );
-  }
-  */
 }
