@@ -11,7 +11,14 @@ final Guid timeSeriesCharacteristicUuid1 = Guid(
   "c1d2e3f4-a5b6-c7d8-e9f0-a1b2c3d4e5f6", // Grafik 1 için
 );
 final Guid timeSeriesCharacteristicUuid2 = Guid(
-  "e6a7b8c9-d0e1-f2a3-b4c5-d6e7f8a9b0c1", // Grafik 2 için YENİ
+  "e6a7b8c9-d0e1-f2a3-b4c5-d6e7f8a9b0c1", // Grafik 2 için
+);
+// YENİ: Grafik 3 ve 4 için UUID'ler
+final Guid timeSeriesCharacteristicUuid3 = Guid(
+  "b2f6d0f4-5f80-4a11-b0e5-7b5e43a9f5d3", // Grafik 3 için YENİ
+);
+final Guid timeSeriesCharacteristicUuid4 = Guid(
+  "5e1a7b8c-2d1f-4e0c-9a3d-6c8f4b0e9a72", // Grafik 4 için YENİ
 );
 
 class MotorStatusPage extends StatefulWidget {
@@ -23,13 +30,17 @@ class MotorStatusPage extends StatefulWidget {
 }
 
 class _MotorStatusPageState extends State<MotorStatusPage> {
-  // Grafik veri listeleri
+  // Grafik veri listeleri (4 adet oldu)
   List<FlSpot> _liveDataSpots1 = []; // Sayfa 1 (Grafik 1) için
   List<FlSpot> _liveDataSpots2 = []; // Sayfa 2 (Grafik 2) için
+  List<FlSpot> _liveDataSpots3 = []; // Sayfa 3 (Grafik 3) için YENİ
+  List<FlSpot> _liveDataSpots4 = []; // Sayfa 4 (Grafik 4) için YENİ
 
-  // BLE veri abonelikleri
+  // BLE veri abonelikleri (4 adet oldu)
   StreamSubscription<List<int>>? _dataSubscription1; // Grafik 1 için
   StreamSubscription<List<int>>? _dataSubscription2; // Grafik 2 için
+  StreamSubscription<List<int>>? _dataSubscription3; // Grafik 3 için YENİ
+  StreamSubscription<List<int>>? _dataSubscription4; // Grafik 4 için YENİ
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
 
   // Global bir zaman sayacı (saniye cinsinden). Veri geldikçe artacak.
@@ -38,7 +49,7 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
 
   // ESP32'den gelen her veri noktasının süresi (ms)
   final int _dataPointIntervalMs =
-      10; // <-- KRİTİK: ESP32'deki dataSendInterval ile AYNI OLMALI!
+      100; // <-- KRİTİK: ESP32'deki dataSendInterval ile AYNI OLMALI!
 
   // Ekranda aynı anda kaç saniyelik veri gösterileceğini belirler (5 saniyelik pencere)
   final int _displaySeconds = 5;
@@ -51,7 +62,7 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
 
   bool _isGraphRunning = true;
 
-  int _currentPageIndex = 0; // 0: Sayfa1 (Grafik), 1: Sayfa2 (Grafik)
+  int _currentPageIndex = 0; // 0: Sayfa1, 1: Sayfa2, 2: Sayfa3, 3: Sayfa4
 
   @override
   void initState() {
@@ -62,8 +73,11 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
 
   @override
   void dispose() {
-    _dataSubscription1?.cancel(); // Abonelikleri iptal etmeyi unutma
+    // Tüm abonelikleri iptal etmeyi unutma
+    _dataSubscription1?.cancel();
     _dataSubscription2?.cancel();
+    _dataSubscription3?.cancel(); // YENİ
+    _dataSubscription4?.cancel(); // YENİ
     _connectionSub?.cancel();
     _graphStopTimer?.cancel();
     super.dispose();
@@ -75,8 +89,11 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
         setState(() {
           _isGraphRunning = false; // Grafiği durdu olarak işaretle
         });
-        _dataSubscription1?.cancel(); // Veri alma aboneliklerini iptal et
+        // Veri alma aboneliklerini iptal et
+        _dataSubscription1?.cancel();
         _dataSubscription2?.cancel();
+        _dataSubscription3?.cancel(); // YENİ
+        _dataSubscription4?.cancel(); // YENİ
         print(
           "Grafikler 30 saniye dolduğu için durduruldu. Son ${_displaySeconds} saniye gösteriliyor.",
         );
@@ -122,6 +139,20 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
                 _dataSubscription2 = c.onValueReceived.listen(_handleLiveData2);
               }
             }
+            // YENİ: Grafik 3 karakteristik aboneliği
+            else if (c.uuid == timeSeriesCharacteristicUuid3) {
+              await c.setNotifyValue(true);
+              if (_isGraphRunning) {
+                _dataSubscription3 = c.onValueReceived.listen(_handleLiveData3);
+              }
+            }
+            // YENİ: Grafik 4 karakteristik aboneliği
+            else if (c.uuid == timeSeriesCharacteristicUuid4) {
+              await c.setNotifyValue(true);
+              if (_isGraphRunning) {
+                _dataSubscription4 = c.onValueReceived.listen(_handleLiveData4);
+              }
+            }
           }
         }
       }
@@ -142,9 +173,7 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
       final double newYValue = byteData.getFloat32(0, Endian.little);
 
       setState(() {
-        // Global zamanı sadece bir yerden güncelle (genel senkronizasyon için)
-        // Eğer her iki karakteristik aynı anda bildirim gönderiyorsa
-        // ve bu fonksiyon ilk çağrılan ise, burada güncelleyebiliriz.
+        // Global zamanı sadece BİR KERE güncelle (genel senkronizasyon için)
         _globalTime += (_dataPointIntervalMs / 1000.0);
 
         final newSpot = FlSpot(_globalTime, newYValue);
@@ -176,26 +205,80 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
     }
   }
 
+  // YENİ: Grafik 3 için veri işleme fonksiyonu
+  void _handleLiveData3(List<int> value) {
+    if (_isGraphRunning && value.length == 4) {
+      final byteData = ByteData.sublistView(Uint8List.fromList(value));
+      final double newYValue = byteData.getFloat32(0, Endian.little);
+
+      setState(() {
+        final newSpot = FlSpot(_globalTime, newYValue);
+        _liveDataSpots3.add(newSpot);
+
+        if (_liveDataSpots3.length > _maxDataPoints) {
+          _liveDataSpots3.removeAt(0);
+        }
+      });
+    }
+  }
+
+  // YENİ: Grafik 4 için veri işleme fonksiyonu
+  void _handleLiveData4(List<int> value) {
+    if (_isGraphRunning && value.length == 4) {
+      final byteData = ByteData.sublistView(Uint8List.fromList(value));
+      final double newYValue = byteData.getFloat32(0, Endian.little);
+
+      setState(() {
+        final newSpot = FlSpot(_globalTime, newYValue);
+        _liveDataSpots4.add(newSpot);
+
+        if (_liveDataSpots4.length > _maxDataPoints) {
+          _liveDataSpots4.removeAt(0);
+        }
+      });
+    }
+  }
+
+  // Sayfaların başlıklarını döndüren yardımcı fonksiyon
+  String _getPageTitle(int index) {
+    switch (index) {
+      case 0:
+        return "MOTOR1 (Tester Sinyali 1)";
+      case 1:
+        return "MOTOR2 (Tester Sinyali 2)";
+      case 2:
+        return "MOTOR3 (Tester Sinyali 3)"; // YENİ
+      case 3:
+        return "MOTOR4 (Tester Sinyali 4)"; // YENİ
+      default:
+        return "Bilinmeyen Motor";
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text("Motor Durumu"),
+        title: Text(_getPageTitle(_currentPageIndex)), // Dinamik başlık
         backgroundColor: const Color(0xFF161625),
         elevation: 4,
       ),
       body: Column(
         children: [
-          // Sayfa Seçim Butonları (taslağa göre üstte)
+          // Sayfa Seçim Butonları (Şimdi 4 adet)
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildPageButton(0, "MOTOR1"),
-                const SizedBox(width: 20), // Butonlar arası boşluk
-                _buildPageButton(1, "MOTOR2"),
+                _buildPageButton(0, "MTR1"),
+                const SizedBox(width: 8),
+                _buildPageButton(1, "MTR2"),
+                const SizedBox(width: 8), // Butonlar arası boşluk
+                _buildPageButton(2, "MTR3"), // YENİ
+                const SizedBox(width: 8),
+                _buildPageButton(3, "MTR4"), // YENİ
               ],
             ),
           ),
@@ -203,13 +286,11 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
             child: IndexedStack(
               index: _currentPageIndex,
               children: [
-                // Her iki sayfa da aynı grafik bileşenini farklı veri listeleriyle gösterecek
-                _buildGraphPageContent(
-                  _liveDataSpots1,
-                ), // Sayfa 1 için _liveDataSpots1 kullan
-                _buildGraphPageContent(
-                  _liveDataSpots2,
-                ), // Sayfa 2 için _liveDataSpots2 kullan
+                // Her dört sayfa da aynı grafik bileşenini farklı veri listeleriyle gösterecek
+                _buildGraphPageContent(_liveDataSpots1), // Sayfa 1 için
+                _buildGraphPageContent(_liveDataSpots2), // Sayfa 2 için
+                _buildGraphPageContent(_liveDataSpots3), // Sayfa 3 için YENİ
+                _buildGraphPageContent(_liveDataSpots4), // Sayfa 4 için YENİ
               ],
             ),
           ),
@@ -231,13 +312,17 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
             ? Colors.blueAccent
             : Colors.grey[700],
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 12,
+        ), // Daha küçük butonlar
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        textStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+        ), // Daha küçük yazı
       ),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-      ),
+      child: Text(text),
     );
   }
 
@@ -252,13 +337,19 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
         maxX = _globalTime;
         minX = max(0.0, _globalTime - _displaySeconds);
 
+        // İlk saniyelerde X ekseninin 0'dan başlamasını sağlamak için
         if (_globalTime < _displaySeconds) {
           minX = 0;
           maxX = _displaySeconds.toDouble();
         }
       } else {
         // Grafik durduysa, kendi spots listesinin min/max X değerlerini kullan
-        minX = spotsToDisplay.first.x;
+        // Bu durumda son 5 saniyelik veriyi göstermeli
+        if (spotsToDisplay.length > _maxDataPoints) {
+          minX = spotsToDisplay[spotsToDisplay.length - _maxDataPoints].x;
+        } else {
+          minX = spotsToDisplay.first.x;
+        }
         maxX = spotsToDisplay.last.x;
       }
     }
@@ -281,7 +372,6 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
   }
 
   // Canlı Grafik Oluşturucu Widget'ı
-  // minX, maxX ve şimdi de görüntülenecek spotları parametre olarak alıyor
   Widget _buildLiveChart(
     double currentMinX,
     double currentMaxX,
@@ -292,9 +382,7 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
         borderRadius: BorderRadius.circular(12),
         color: const Color(0xFF161625).withOpacity(0.5),
       ),
-      child:
-          spots
-              .isEmpty // Hangi listeye göre boş kontrolü yapılacaksa o kullanılır
+      child: spots.isEmpty
           ? const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -312,7 +400,7 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
               padding: const EdgeInsets.only(right: 20.0, top: 20, bottom: 10),
               child: LineChart(
                 LineChartData(
-                  minY: 0,
+                  minY: 0, // Tüm sinyaller 0-5 arasında olduğu için uygun
                   maxY: 5,
                   minX: currentMinX,
                   maxX: currentMaxX,
@@ -386,7 +474,8 @@ class _MotorStatusPageState extends State<MotorStatusPage> {
       fontSize: 14,
     );
     String text;
-    if (value.toInt() == value && value >= 1.0 && value <= 5.0) {
+    if (value.toInt() == value && value >= 0.0 && value <= 5.0) {
+      // Y ekseni 0'dan başladı
       text = value.toInt().toString();
     } else {
       return Container();
