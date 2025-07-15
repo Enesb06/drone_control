@@ -3,15 +3,17 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>  
 #include <Arduino.h>
-#include <math.h> // fmod, fmax ve fmin için gerekli
+#include <math.h> // fmod, fmax, fmin ve sin için gerekli
 
-// ----- KARAKTERİSTİK UUID'LERİ (FLUTTER İLE AYNI) -----
+// ----- KARAKTERİSTİK UUID'LERİ (FLUTTER İLE AYNI OLMALI) -----
 #define DEVICE_NAME "ESP32_Graph_Tester"
 #define SERVICE_UUID           "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define TIMESERIES_CHAR_UUID   "c1d2e3f4-a5b6-c7d8-e9f0-a1b2c3d4e5f6"
+#define TIMESERIES_CHAR_UUID_1 "c1d2e3f4-a5b6-c7d8-e9f0-a1b2c3d4e5f6" // Grafik 1 için mevcut UUID
+#define TIMESERIES_CHAR_UUID_2 "e6a7b8c9-d0e1-f2a3-b4c5-d6e7f8a9b0c1" // Grafik 2 için YENİ UUID
 
-// Karakteristik nesnesi
-BLECharacteristic *pTimeSeriesCharacteristic;
+// Karakteristik nesneleri
+BLECharacteristic *pTimeSeriesCharacteristic1; // Grafik 1
+BLECharacteristic *pTimeSeriesCharacteristic2; // Grafik 2
 
 bool deviceConnected = false;
 unsigned long lastDataSendTime = 0;
@@ -20,12 +22,20 @@ const int dataSendInterval = 10; // Flutter'daki _dataPointIntervalMs ile aynı 
 // Grafiğin zamanlamasını başlatmak için bağlantı anını kaydeden değişken
 unsigned long graphStartTimeMillis = 0; 
 
+// Grafik 1 için parametreler (Mevcut tester sinyali)
+const float minValue1 = 1.0;
+const float maxValue1 = 5.0;
+const float riseTime1 = 4.0;
+const float fallTime1 = 4.0;
+const float totalCycleTime1 = riseTime1 + fallTime1;
 
-const float minValue = 1.0;
-const float maxValue = 5.0; // Y ekseninin zirvesi hala 5.0
-const float riseTime = 4.0; // 1.0'dan 5.0'a çıkış süresi (4 birim * 1 saniye/birim)
-const float fallTime = 4.0; // 5.0'dan 1.0'a iniş süresi (4 birim * 1 saniye/birim)
-const float totalCycleTime = riseTime + fallTime; // Toplam döngü süresi: 4 + 4 = 8 saniye
+// Grafik 2 için parametreler (Yeni sinyal - daha farklı bir tester sinyali yapalım)
+const float minValue2 = 0.5; // Farklı bir min değer
+const float maxValue2 = 4.5; // Farklı bir max değer
+const float riseTime2 = 2.0; // Daha hızlı yükselme
+const float fallTime2 = 6.0; // Daha yavaş düşme
+const float totalCycleTime2 = riseTime2 + fallTime2;
+
 
 // Sunucu bağlantı callback'i
 class ServerCallbacks: public BLEServerCallbacks {
@@ -51,11 +61,19 @@ void setup() {
     pServer->setCallbacks(new ServerCallbacks());
     BLEService *pService = pServer->createService(SERVICE_UUID);
 
-    pTimeSeriesCharacteristic = pService->createCharacteristic(
-        TIMESERIES_CHAR_UUID, 
+    // Grafik 1 Karakteristiği
+    pTimeSeriesCharacteristic1 = pService->createCharacteristic(
+        TIMESERIES_CHAR_UUID_1, 
         BLECharacteristic::PROPERTY_NOTIFY // Sadece bildirim özelliği yeterli
     );
-    pTimeSeriesCharacteristic->addDescriptor(new BLE2902()); // Notifikasyonlar için descriptor
+    pTimeSeriesCharacteristic1->addDescriptor(new BLE2902()); // Notifikasyonlar için descriptor
+
+    // Grafik 2 Karakteristiği
+    pTimeSeriesCharacteristic2 = pService->createCharacteristic(
+        TIMESERIES_CHAR_UUID_2, 
+        BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pTimeSeriesCharacteristic2->addDescriptor(new BLE2902());
 
     pService->start();
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
@@ -75,31 +93,39 @@ void loop() {
             // Bağlantı başlangıcından bu yana geçen süreyi hesapla (saniye cinsinden)
             float elapsedTotalTime = (float)(currentTime - graphStartTimeMillis) / 1000.0f;
 
-            // Döngü içindeki zamanı hesapla (0'dan totalCycleTime'a kadar)
-            float timeInCycle = fmod(elapsedTotalTime, totalCycleTime); 
-
-            float currentValue;
+            // --- Grafik 1 için değer hesaplama (Mevcut mantık) ---
+            float timeInCycle1 = fmod(elapsedTotalTime, totalCycleTime1); 
+            float currentValue1;
             
-            if (timeInCycle < riseTime) {
-                // Yükselen faz (0'dan 4 saniyeye kadar: 1.0 -> 5.0)
-                // Her saniyede 1 birim artar
-                currentValue = minValue + timeInCycle; 
+            if (timeInCycle1 < riseTime1) {
+                currentValue1 = minValue1 + timeInCycle1; 
             } else {
-                // Azalan faz (4'ten 8 saniyeye kadar: 5.0 -> 1.0)
-                // Bu fazın başlangıcından bu yana geçen süre
-                float timeInFallingPhase = timeInCycle - riseTime; 
-                // Her saniyede 1 birim azalır
-                currentValue = maxValue - timeInFallingPhase; 
+                float timeInFallingPhase1 = timeInCycle1 - riseTime1; 
+                currentValue1 = maxValue1 - timeInFallingPhase1; 
             }
+            currentValue1 = fmax(minValue1, fmin(maxValue1, currentValue1));
+            pTimeSeriesCharacteristic1->setValue((uint8_t*)&currentValue1, sizeof(currentValue1));
+            pTimeSeriesCharacteristic1->notify();
+
+            // --- Grafik 2 için değer hesaplama (Yeni, farklı bir sinyal) ---
+            float timeInCycle2 = fmod(elapsedTotalTime, totalCycleTime2); 
+            float currentValue2;
             
-            // Değerlerin istenen aralıkta kaldığından emin ol
-            currentValue = fmax(minValue, fmin(maxValue, currentValue));
+            if (timeInCycle2 < riseTime2) {
+                // Yükselen faz
+                // Başlangıç değeri + (fazdaki geçen süre / fazın toplam süresi) * (maks-min değer farkı)
+                currentValue2 = minValue2 + (timeInCycle2 / riseTime2) * (maxValue2 - minValue2);
+            } else {
+                // Azalan faz
+                float timeInFallingPhase2 = timeInCycle2 - riseTime2; 
+                // Maks değer - (fazdaki geçen süre / fazın toplam süresi) * (maks-min değer farkı)
+                currentValue2 = maxValue2 - (timeInFallingPhase2 / fallTime2) * (maxValue2 - minValue2);
+            }
+            currentValue2 = fmax(minValue2, fmin(maxValue2, currentValue2));
+            pTimeSeriesCharacteristic2->setValue((uint8_t*)&currentValue2, sizeof(currentValue2));
+            pTimeSeriesCharacteristic2->notify();
 
-            pTimeSeriesCharacteristic->setValue((uint8_t*)&currentValue, sizeof(currentValue));
-            pTimeSeriesCharacteristic->notify();
-
-            Serial.printf("Zaman: %.3f s (Döngü: %.3f s), Gonderilen deger: %.2f\n", elapsedTotalTime, timeInCycle, currentValue);
+            Serial.printf("Zaman: %.3f s, Deger1: %.2f, Deger2: %.2f\n", elapsedTotalTime, currentValue1, currentValue2);
         }
     }
-    // delay(10); // Bu delay, yukarıdaki dataSendInterval mantığını bozacağı için hala kaldırılmış durumda.
 }
