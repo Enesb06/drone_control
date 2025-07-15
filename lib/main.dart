@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'motor_status_page.dart';
-// import 'dart:typed_data'; // Artık uptime için kullanılmadığı için kaldırabiliriz
 
+// import 'dart:typed_data'; // Artık uptime için kullanılmadığı için kaldırabiliriz
 // ----- YENİ BLE MİMARİSİNE GÖRE UUID'LER -----
 // Not: ESP32 kodundaki UUID'lerle aynı olmalı
 final Guid serviceUuid = Guid("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
