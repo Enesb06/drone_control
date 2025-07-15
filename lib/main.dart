@@ -20,9 +20,10 @@ void main() {
   if (Platform.isAndroid) {
     WidgetsFlutterBinding.ensureInitialized();
     [
-      Permission.bluetooth,
+      //Permission.bluetooth,
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
+      Permission.bluetoothAdvertise,
       Permission
           .location, // Android 12 öncesi Bluetooth için konum izni gerekliydi.
     ].request().then((status) {
@@ -115,10 +116,8 @@ class _HomePageState extends State<HomePage> {
             ), // Cihaz bulunamazsa hata fırlat
           );
 
-          if (foundDevice != null) {
-            FlutterBluePlus.stopScan();
-            _connectToDevice(foundDevice.device);
-          }
+          FlutterBluePlus.stopScan();
+          _connectToDevice(foundDevice.device);
         }
       },
       onError: (e) {

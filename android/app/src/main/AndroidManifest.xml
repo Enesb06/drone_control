@@ -2,8 +2,11 @@
 
     <!-- ================= BLUETOOTH VE KONUM İZİNLERİ - BURAYA EKLENDİ ================= -->
     <!-- Android 12 ve üzeri için yeni Bluetooth izinleri -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+   
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
     <!-- Android 11 ve altı için eski izinler -->
     <!-- maxSdkVersion="30" ile bu izinlerin sadece eski sürümlerde istenmesini sağlıyoruz. -->
