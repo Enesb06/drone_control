@@ -1,27 +1,33 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ================= BLUETOOTH VE KONUM İZİNLERİ - BURAYA EKLENDİ ================= -->
-    <!-- Android 12 ve üzeri için yeni Bluetooth izinleri -->
-   
+    <!-- =================================================================== -->
+    <!--                            İZİNLER (Permissions)                    -->
+    <!-- =================================================================== -->
+
+    <!-- Android 12 (API 31) ve sonrası için GEREKLİ yeni Bluetooth izinleri -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-    android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- Android 11 ve altı için eski izinler -->
-    <!-- maxSdkVersion="30" ile bu izinlerin sadece eski sürümlerde istenmesini sağlıyoruz. -->
+    <!-- Konum İzni: BLE taraması için hala birçok cihazda ve durumda GEREKLİDİR. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    
+    <!-- Eski Android sürümleri için (maxSdkVersion="30" ile sınırlandırılmış) -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <!--
-        ACCESS_COARSE_LOCATION izni, ACCESS_FINE_LOCATION tarafından kapsanır ama bazı
-        eski cihazlar için eklemek iyi bir alışkanlıktır.
-    -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30"/>
-    <!-- =================================================================================== -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
+
+
+    <!-- =================================================================== -->
+    <!--                 DONANIM ÖZELLİĞİ BEYANI (KRİTİK)                    -->
+    <!-- =================================================================== -->
+    <!-- Bu satır, uygulamanın BLE kullandığını ve bu donanımın zorunlu olduğunu sisteme bildirir. -->
+    <!-- EKSİKSE, BU SATIRI EKLEYİN. -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
 
     <application
-        android:label="uptime_monitor_ble"
+        android:label="uptime_monitor_final"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -32,9 +38,7 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!--
-                 Bu meta-data, Flutter UI başlatılırken görünen başlangıç temasını belirtir.
-            -->
+            
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"
@@ -44,18 +48,20 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!--
-             Bu meta-data Flutter araçları tarafından kullanılır, silmeyin.
-        -->
+        
+        <!-- Cihaz ve Servis Eşleştirmesi için Intent Filtresi -->
+        <service android:name="io.flutter.plugins.flutter_blue_plus.FlutterBluePlusService" android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.BluetoothDevice.ACTION_UUID"/>
+                <data android:scheme="uuid" android:host="4fafc201-1fb5-459e-8fcc-c5c9c331914b" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
 
-    <!--
-        Bu bölüm, metin işleme gibi niyetleri sorgulamak için kullanılır.
-        Flutter'ın kendi motoru tarafından ihtiyaç duyulur.
-    -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
