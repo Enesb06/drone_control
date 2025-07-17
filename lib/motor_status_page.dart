@@ -37,10 +37,8 @@ class MotorStatusPage extends StatefulWidget {
 
 class _MotorStatusPageState extends State<MotorStatusPage>
     with TickerProviderStateMixin {
-  // TabController motor sekmeleri arasında geçişi yönetir.
   late TabController _tabController;
 
-  // State Değişkenleri
   DataType _selectedDataType = DataType.resultant;
   List<FlSpot> _liveDataSpots1 = [];
   List<FlSpot> _liveDataSpots2 = [];
@@ -61,10 +59,12 @@ class _MotorStatusPageState extends State<MotorStatusPage>
   bool _isSavingData = false;
   bool _dataSaved = false;
 
+  bool _isMenuVisible = true;
+  final double _menuWidth = 100.0;
+
   @override
   void initState() {
     super.initState();
-    // TabController'ı 4 sekmeli olarak başlatıyoruz.
     _tabController = TabController(length: 4, vsync: this);
     _setupPage();
     _startGraphStopTimer();
@@ -72,7 +72,7 @@ class _MotorStatusPageState extends State<MotorStatusPage>
 
   @override
   void dispose() {
-    _tabController.dispose(); // Controller'ı temizlemeyi unutmuyoruz.
+    _tabController.dispose();
     _dataSubscription1?.cancel();
     _dataSubscription2?.cancel();
     _dataSubscription3?.cancel();
@@ -82,6 +82,27 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     super.dispose();
   }
 
+  void _toggleMenuVisibility() {
+    setState(() {
+      _isMenuVisible = !_isMenuVisible;
+    });
+  }
+
+  // === YENİ: Seçili veri tipini metne çeviren yardımcı fonksiyon ===
+  String _getSelectedDataTypeText() {
+    switch (_selectedDataType) {
+      case DataType.x_axis:
+        return "Veri Tipi: X Ekseni";
+      case DataType.y_axis:
+        return "Veri Tipi: Y Ekseni";
+      case DataType.z_axis:
+        return "Veri Tipi: Z Ekseni";
+      case DataType.resultant:
+        return "Veri Tipi: Bileşke";
+    }
+  }
+
+  // Geri kalan tüm metotlar aynı kalıyor...
   void _startGraphStopTimer() {
     _graphStopTimer = Timer(Duration(seconds: _graphDurationSeconds), () {
       if (mounted) {
@@ -233,9 +254,29 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: Text(
-          "MOTOR ${_tabController.index + 1}",
-        ), // ORİJİNAL HALİ KORUNDU
+        // === DEĞİŞTİ: AppBar Başlığı artık dinamik bir Column ===
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Ana başlık
+            Text("MOTOR ${_tabController.index + 1}"),
+
+            // Alt başlık: Sadece menü kapalıyken görünür
+            if (!_isMenuVisible)
+              Padding(
+                padding: const EdgeInsets.only(top: 2.0),
+                child: Text(
+                  _getSelectedDataTypeText(), // Yeni helper fonksiyondan gelen metin
+                  style: const TextStyle(
+                    fontSize: 12.0,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ),
+          ],
+        ),
         backgroundColor: const Color(0xFF161625),
         elevation: 2,
         actions: [
@@ -258,7 +299,7 @@ class _MotorStatusPageState extends State<MotorStatusPage>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
           onTap: (index) {
-            setState(() {}); // ORİJİNAL HALİ KORUNDU
+            setState(() {});
           },
           tabs: const [
             Tab(text: "M1"),
@@ -268,18 +309,33 @@ class _MotorStatusPageState extends State<MotorStatusPage>
           ],
         ),
       ),
-      // =========== DEĞİŞİKLİK BURADA BAŞLIYOR ===========
       body: Row(
         children: [
-          _buildDataTypeSelectorMenu(), // Sol menü aynı
-          const VerticalDivider(width: 1, thickness: 1, color: Colors.white12),
-          // Grafik alanını dikeyde bölmek için Column kullanıyoruz
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            width: _isMenuVisible ? _menuWidth : 0,
+            child: ClipRect(child: _buildDataTypeSelectorMenu()),
+          ),
+          GestureDetector(
+            onTap: _toggleMenuVisibility,
+            child: Container(
+              width: 20,
+              height: double.infinity,
+              color: const Color(0xFF161625).withOpacity(0.5),
+              child: Icon(
+                _isMenuVisible
+                    ? Icons.chevron_left_rounded
+                    : Icons.chevron_right_rounded,
+                color: Colors.white70,
+              ),
+            ),
+          ),
           Expanded(
             child: Column(
               children: [
-                // ÜST GRAFİK (Orijinal yapının aynısı)
                 Expanded(
                   child: TabBarView(
+                    physics: const NeverScrollableScrollPhysics(),
                     controller: _tabController,
                     children: [
                       _buildGraphPageContent(_liveDataSpots1),
@@ -289,11 +345,10 @@ class _MotorStatusPageState extends State<MotorStatusPage>
                     ],
                   ),
                 ),
-                // İki grafik arasına ayırıcı çizgi
                 const Divider(height: 1, thickness: 1, color: Colors.white24),
-                // ALT GRAFİK (Üstteki yapının birebir kopyası)
                 Expanded(
                   child: TabBarView(
+                    physics: const NeverScrollableScrollPhysics(),
                     controller: _tabController,
                     children: [
                       _buildGraphPageContent(_liveDataSpots1),
@@ -308,14 +363,14 @@ class _MotorStatusPageState extends State<MotorStatusPage>
           ),
         ],
       ),
-      // =========== DEĞİŞİKLİK BURADA BİTİYOR ===========
     );
   }
 
+  // Geri kalan tüm widget build metotları aynı kalıyor.
   Widget _buildDataTypeSelectorMenu() {
     return Container(
-      width: 100, // ORİJİNALDEKİ 100px KORUNDU
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
+      constraints: BoxConstraints(maxWidth: _menuWidth),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -326,6 +381,8 @@ class _MotorStatusPageState extends State<MotorStatusPage>
               fontSize: 14,
               fontWeight: FontWeight.bold,
             ),
+            overflow: TextOverflow.fade,
+            softWrap: false,
           ),
           const SizedBox(height: 8),
           const Text(
