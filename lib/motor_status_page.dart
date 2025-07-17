@@ -233,7 +233,9 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: Text("MOTOR ${_tabController.index + 1}"),
+        title: Text(
+          "MOTOR ${_tabController.index + 1}",
+        ), // ORİJİNAL HALİ KORUNDU
         backgroundColor: const Color(0xFF161625),
         elevation: 2,
         actions: [
@@ -256,7 +258,7 @@ class _MotorStatusPageState extends State<MotorStatusPage>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
           onTap: (index) {
-            setState(() {});
+            setState(() {}); // ORİJİNAL HALİ KORUNDU
           },
           tabs: const [
             Tab(text: "M1"),
@@ -266,29 +268,53 @@ class _MotorStatusPageState extends State<MotorStatusPage>
           ],
         ),
       ),
+      // =========== DEĞİŞİKLİK BURADA BAŞLIYOR ===========
       body: Row(
         children: [
-          _buildDataTypeSelectorMenu(),
+          _buildDataTypeSelectorMenu(), // Sol menü aynı
           const VerticalDivider(width: 1, thickness: 1, color: Colors.white12),
+          // Grafik alanını dikeyde bölmek için Column kullanıyoruz
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
+            child: Column(
               children: [
-                _buildGraphPageContent(_liveDataSpots1),
-                _buildGraphPageContent(_liveDataSpots2),
-                _buildGraphPageContent(_liveDataSpots3),
-                _buildGraphPageContent(_liveDataSpots4),
+                // ÜST GRAFİK (Orijinal yapının aynısı)
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildGraphPageContent(_liveDataSpots1),
+                      _buildGraphPageContent(_liveDataSpots2),
+                      _buildGraphPageContent(_liveDataSpots3),
+                      _buildGraphPageContent(_liveDataSpots4),
+                    ],
+                  ),
+                ),
+                // İki grafik arasına ayırıcı çizgi
+                const Divider(height: 1, thickness: 1, color: Colors.white24),
+                // ALT GRAFİK (Üstteki yapının birebir kopyası)
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildGraphPageContent(_liveDataSpots1),
+                      _buildGraphPageContent(_liveDataSpots2),
+                      _buildGraphPageContent(_liveDataSpots3),
+                      _buildGraphPageContent(_liveDataSpots4),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
         ],
       ),
+      // =========== DEĞİŞİKLİK BURADA BİTİYOR ===========
     );
   }
 
   Widget _buildDataTypeSelectorMenu() {
     return Container(
-      width: 100,
+      width: 100, // ORİJİNALDEKİ 100px KORUNDU
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -204,7 +204,11 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: const Icon(Icons.show_chart_rounded),
             tooltip: 'Canlı Veri Grafiği',
-            onPressed: _isConnected
+            // ====================== DÜZELTME BURADA ======================
+            // Butona basılabilmesi için artık hem _isConnected'ın true olmasını,
+            // hem de _esp32Device'ın null olmamasını kontrol ediyoruz.
+            // Bu, çökmenin önüne %100 geçer.
+            onPressed: (_isConnected && _esp32Device != null)
                 ? () {
                     Navigator.push(
                       context,
@@ -215,6 +219,7 @@ class _HomePageState extends State<HomePage> {
                     );
                   }
                 : null,
+            // =============================================================
           ),
         ],
       ),
