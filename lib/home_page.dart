@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:uptime_monitor_final/saved_graphs_page.dart'; // Proje adınıza göre yolu kontrol edin
+import 'package:uptime_monitor_final/saved_graphs_page.dart';
 import 'motor_status_page.dart';
 
 // Bu sabitler projenizin her yerinde aynı kalmalı
@@ -19,8 +19,7 @@ class _HomePageState extends State<HomePage> {
   BluetoothDevice? _esp32Device;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
-  StreamSubscription<bool>?
-  _isScanningSubscription; // Tarama durumunu dinlemek için
+  StreamSubscription<bool>? _isScanningSubscription;
 
   String _statusMessage = "Başlatılıyor...";
   bool _isConnected = false;
@@ -30,7 +29,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Bluetooth adaptör durumunu dinle
     FlutterBluePlus.adapterState.listen((state) {
       if (!mounted) return;
       if (state == BluetoothAdapterState.on) {
@@ -41,7 +39,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // Tüm abonelikleri güvenli bir şekilde iptal et
   Future<void> _cleanupSubscriptions() async {
     await _scanSubscription?.cancel();
     _scanSubscription = null;
@@ -51,20 +48,15 @@ class _HomePageState extends State<HomePage> {
     _isScanningSubscription = null;
   }
 
-  // --- ZAMANLAMA HATASINI GİDEREN YENİ TARAMA METODU ---
   void _startScan() {
     if (_isScanning || _isConnecting || _isConnected) return;
 
-    _cleanupSubscriptions(); // Her zaman temiz bir başlangıç yap
+    _cleanupSubscriptions();
 
     try {
-      // 1. Tarama durumunu dinlemeye başla. Bu, "bulunamadı" mesajını doğru zamanda göstermemizi sağlar.
       _isScanningSubscription = FlutterBluePlus.isScanning.listen((scanning) {
         if (mounted) {
-          setState(() {
-            _isScanning = scanning;
-          });
-          // Eğer tarama durduysa VE hala bağlanmadıysak/bağlanmıyorsak, o zaman cihaz bulunamamıştır.
+          setState(() => _isScanning = scanning);
           if (!_isScanning && !_isConnected && !_isConnecting) {
             setState(() {
               _statusMessage = "$targetDeviceName bulunamadı.";
@@ -73,26 +65,18 @@ class _HomePageState extends State<HomePage> {
         }
       });
 
-      // 2. Tarama sonuçlarını dinle.
       _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-        // Gelen her yeni sonuç listesinde cihazımızı ara
         for (var result in results) {
           if (result.device.platformName == targetDeviceName) {
             print(">>> Cihaz bulundu: ${result.device.platformName} <<<");
-
-            // Cihazı bulur bulmaz taramayı durdur ve bağlan.
-            // Bu, birden fazla kez bağlanma denemesini engeller.
             FlutterBluePlus.stopScan();
             _connectToDevice(result.device);
-
-            // Artık tarama sonuçlarını dinlemeye gerek yok.
             _scanSubscription?.cancel();
-            return; // Fonksiyondan çık
+            return;
           }
         }
       });
 
-      // 3. Taramayı başlat. Kendi Timer'ımız YOK. Kütüphanenin timeout'una güveniyoruz.
       setState(() {
         _statusMessage = "Cihaz aranıyor...";
       });
@@ -106,62 +90,69 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // ============== MANTIĞIN GÜÇLENDİRİLDİĞİ YER ==============
   Future<void> _connectToDevice(BluetoothDevice device) async {
-    // Zaten bağlanıyorsak veya bağlıysak tekrar deneme
     if (_isConnecting || _isConnected) return;
 
-    // Tarama ile ilgili abonelikleri temizle
     _scanSubscription?.cancel();
     _isScanningSubscription?.cancel();
 
     if (mounted) {
       setState(() {
         _isConnecting = true;
-        _isConnected = false;
-        _isScanning = false;
-        _esp32Device = device;
         _statusMessage = "Bağlanılıyor...";
       });
     }
 
+    // Bağlantı durumu dinleyicisini, bağlanma işleminden ÖNCE ayarlıyoruz.
+    // Bu, hiçbir durumu kaçırmamamızı sağlar.
     _connectionStateSubscription = device.connectionState.listen((state) {
       if (!mounted) return;
-      if (state == BluetoothConnectionState.connected) {
-        _onDeviceConnected();
-      } else if (state == BluetoothConnectionState.disconnected) {
-        _stopAllActivities("Bağlantı koptu.", performDisconnect: false);
+
+      // Gelen her duruma göre state'i güncelliyoruz.
+      switch (state) {
+        case BluetoothConnectionState.connected:
+          // === YARIŞ DURUMUNU ÖNLEYEN ÇEKİRDEK ÇÖZÜM ===
+          // Cihaz bağlandığında, ilgili TÜM değişkenleri
+          // tek bir setState çağrısı içinde "atomik" olarak güncelliyoruz.
+          // Bu, _isConnected true iken _esp32Device'ın null olmasını imkansız hale getirir.
+          setState(() {
+            _isConnected = true;
+            _isConnecting = false;
+            _esp32Device = device; // EN ÖNEMLİ EKLEME!
+            _statusMessage = "Bağlandı!";
+          });
+          break;
+        case BluetoothConnectionState.disconnected:
+          // Bağlantı koptuğunda her şeyi sıfırlayan merkezi fonksiyonu çağırıyoruz.
+          _stopAllActivities("Bağlantı koptu.");
+          break;
+        default:
+          // Diğer durumlar (connecting, disconnecting) için şimdilik bir şey yapmıyoruz.
+          break;
       }
     });
 
     try {
-      await device.connect(timeout: const Duration(seconds: 15));
+      // timeoute'u biraz daha uzun tutarak zayıf sinyallere şans veriyoruz.
+      await device.connect(timeout: const Duration(seconds: 20));
     } catch (e) {
-      // Bazen Android'de bağlantı başarılı olsa da bir istisna fırlatılabilir (GATT 133 hatası gibi).
-      // Eğer cihaz zaten 'connected' durumuna geçtiyse, hatayı görmezden gelebiliriz.
-      // 1 saniye sonra durumu kontrol et.
-      await Future.delayed(const Duration(milliseconds: 1000));
-      if (_isConnected) {
-        print("Bağlantı hatası alındı ama cihaz zaten bağlı: $e");
-        return;
+      // Eğer connect metodu hata fırlatırsa (örn: timeout) ve biz hala
+      // 'connected' durumuna geçmediysek, işlemi durdur.
+      if (mounted && !_isConnected) {
+        _stopAllActivities("Bağlantı başarısız: $e");
       }
-      if (mounted) _stopAllActivities("Bağlantı başarısız: $e");
     }
   }
 
-  void _onDeviceConnected() {
-    if (!mounted || _isConnected)
-      return; // Zaten bağlı olarak ayarlandıysa tekrar girme
-
-    setState(() {
-      _isConnected = true;
-      _isConnecting = false;
-      _statusMessage = "Bağlandı!";
-    });
-  }
+  // _onDeviceConnected fonksiyonuna artık ihtiyacımız kalmadı, mantığı yukarı taşıdık.
 
   void _stopAllActivities(String message, {bool performDisconnect = true}) {
     if (performDisconnect) {
-      _esp32Device?.disconnect();
+      // _esp32Device null olsa bile sorun çıkarmayacak güvenli disconnect çağrısı.
+      _esp32Device?.disconnect().catchError((e) {
+        print("Disconnect hatası (normal olabilir): $e");
+      });
     }
     _cleanupSubscriptions();
     if (mounted) {
@@ -169,16 +160,15 @@ class _HomePageState extends State<HomePage> {
         _isScanning = false;
         _isConnecting = false;
         _isConnected = false;
-        _esp32Device = null;
+        _esp32Device = null; // HER ŞEYİ SIFIRLA
         _statusMessage = message;
       });
     }
   }
+  // ==============================================================
 
   @override
   void dispose() {
-    // Sadece abonelikleri temizle, cihaz bağlantısını kesme.
-    // Bu, sayfa geçişlerinde bağlantının kopmasını engeller.
     _cleanupSubscriptions();
     super.dispose();
   }
@@ -204,10 +194,7 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: const Icon(Icons.show_chart_rounded),
             tooltip: 'Canlı Veri Grafiği',
-            // ====================== DÜZELTME BURADA ======================
-            // Butona basılabilmesi için artık hem _isConnected'ın true olmasını,
-            // hem de _esp32Device'ın null olmamasını kontrol ediyoruz.
-            // Bu, çökmenin önüne %100 geçer.
+            // Koşulumuz hala aynı ve şimdi çok daha güvenilir çalışacak.
             onPressed: (_isConnected && _esp32Device != null)
                 ? () {
                     Navigator.push(
@@ -219,7 +206,6 @@ class _HomePageState extends State<HomePage> {
                     );
                   }
                 : null,
-            // =============================================================
           ),
         ],
       ),

@@ -52,9 +52,10 @@ class _MotorStatusPageState extends State<MotorStatusPage>
   double _globalTime = 0;
   final int _dataPointIntervalMs = 100;
   final int _displaySeconds = 5;
-  final int _maxDataPoints = 500;
+  // === DEĞİŞTİ: Bu satırı artık kullanmıyoruz ama referans için burada bırakabiliriz ===
+  // final int _maxDataPoints = 500; // ESKİ SINIRLAMA
   Timer? _graphStopTimer;
-  final int _graphDurationSeconds = 30;
+  final int _graphDurationSeconds = 60;
   bool _isGraphRunning = true;
   bool _isSavingData = false;
   bool _dataSaved = false;
@@ -88,7 +89,6 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     });
   }
 
-  // === YENİ: Seçili veri tipini metne çeviren yardımcı fonksiyon ===
   String _getSelectedDataTypeText() {
     switch (_selectedDataType) {
       case DataType.x_axis:
@@ -102,7 +102,6 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     }
   }
 
-  // Geri kalan tüm metotlar aynı kalıyor...
   void _startGraphStopTimer() {
     _graphStopTimer = Timer(Duration(seconds: _graphDurationSeconds), () {
       if (mounted) {
@@ -196,6 +195,7 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     }
   }
 
+  // ============== ÇÖZÜMÜN UYGULANDIĞI YERLER ==============
   void _handleLiveData1(List<int> value) {
     if (_isGraphRunning && value.length == 4) {
       final byteData = ByteData.sublistView(Uint8List.fromList(value));
@@ -204,8 +204,8 @@ class _MotorStatusPageState extends State<MotorStatusPage>
         _globalTime += (_dataPointIntervalMs / 1000.0);
         final newSpot = FlSpot(_globalTime, newYValue);
         _liveDataSpots1.add(newSpot);
-        if (_liveDataSpots1.length > _maxDataPoints)
-          _liveDataSpots1.removeAt(0);
+        // if (_liveDataSpots1.length > _maxDataPoints) // BU SATIR KALDIRILDI
+        //   _liveDataSpots1.removeAt(0);
       });
     }
   }
@@ -217,8 +217,8 @@ class _MotorStatusPageState extends State<MotorStatusPage>
       setState(() {
         final newSpot = FlSpot(_globalTime, newYValue);
         _liveDataSpots2.add(newSpot);
-        if (_liveDataSpots2.length > _maxDataPoints)
-          _liveDataSpots2.removeAt(0);
+        // if (_liveDataSpots2.length > _maxDataPoints) // BU SATIR KALDIRILDI
+        //   _liveDataSpots2.removeAt(0);
       });
     }
   }
@@ -230,8 +230,8 @@ class _MotorStatusPageState extends State<MotorStatusPage>
       setState(() {
         final newSpot = FlSpot(_globalTime, newYValue);
         _liveDataSpots3.add(newSpot);
-        if (_liveDataSpots3.length > _maxDataPoints)
-          _liveDataSpots3.removeAt(0);
+        // if (_liveDataSpots3.length > _maxDataPoints) // BU SATIR KALDIRILDI
+        //   _liveDataSpots3.removeAt(0);
       });
     }
   }
@@ -243,31 +243,28 @@ class _MotorStatusPageState extends State<MotorStatusPage>
       setState(() {
         final newSpot = FlSpot(_globalTime, newYValue);
         _liveDataSpots4.add(newSpot);
-        if (_liveDataSpots4.length > _maxDataPoints)
-          _liveDataSpots4.removeAt(0);
+        // if (_liveDataSpots4.length > _maxDataPoints) // BU SATIR KALDIRILDI
+        //   _liveDataSpots4.removeAt(0);
       });
     }
   }
+  // ==============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        // === DEĞİŞTİ: AppBar Başlığı artık dinamik bir Column ===
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Ana başlık
             Text("MOTOR ${_tabController.index + 1}"),
-
-            // Alt başlık: Sadece menü kapalıyken görünür
             if (!_isMenuVisible)
               Padding(
                 padding: const EdgeInsets.only(top: 2.0),
                 child: Text(
-                  _getSelectedDataTypeText(), // Yeni helper fonksiyondan gelen metin
+                  _getSelectedDataTypeText(),
                   style: const TextStyle(
                     fontSize: 12.0,
                     color: Colors.white70,
@@ -366,7 +363,6 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     );
   }
 
-  // Geri kalan tüm widget build metotları aynı kalıyor.
   Widget _buildDataTypeSelectorMenu() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
@@ -446,8 +442,8 @@ class _MotorStatusPageState extends State<MotorStatusPage>
         maxX = _globalTime;
         minX = max(0.0, _globalTime - _displaySeconds);
       } else {
-        minX = spotsToDisplay.first.x;
-        maxX = spotsToDisplay.last.x;
+        minX = 0.0;
+        maxX = _graphDurationSeconds.toDouble();
       }
     }
     return Padding(
@@ -461,6 +457,17 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     double currentMaxX,
     List<FlSpot> spots,
   ) {
+    double bottomTitleInterval;
+
+    if (_isGraphRunning) {
+      bottomTitleInterval = 1.0;
+    } else {
+      bottomTitleInterval = _graphDurationSeconds / 5.0;
+      if (bottomTitleInterval <= 0) {
+        bottomTitleInterval = 1.0;
+      }
+    }
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -505,7 +512,7 @@ class _MotorStatusPageState extends State<MotorStatusPage>
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 28,
-                      interval: 1.0,
+                      interval: bottomTitleInterval,
                       getTitlesWidget: (v, m) => Text(
                         v.round().toString(),
                         style: const TextStyle(

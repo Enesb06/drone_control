@@ -1,5 +1,3 @@
-// lib/pages/view_recorded_graph_page.dart (GÜNCELLENMİŞ)
-
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -18,18 +16,14 @@ class ViewRecordedGraphPage extends StatefulWidget {
 class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
   int _selectedIndex = 0;
 
-  // --- MEVCUT SINIR DEĞİŞKENLERİ ---
   late double _minX, _maxX, _minY, _maxY;
   late double _initialMinX, _initialMaxX, _initialMinY, _initialMaxY;
 
-  // --- YENİ: JEST BAŞLANGIÇ DURUMUNU TUTAN DEĞİŞKENLER ---
   double _gestureStartMinX = 0, _gestureStartMaxX = 0;
   double _gestureStartMinY = 0, _gestureStartMaxY = 0;
 
-  // --- YENİ: HASSASİYET AYARLARI (Bu değerlerle oynayarak en iyi sonucu bulabilirsiniz) ---
-  final double _panSensitivity = 1.0; // Kaydırma hassasiyeti. 1.0 standart.
-  final double _zoomSensitivity =
-      1.0; // Yakınlaştırma hassasiyeti. 1.0 standart.
+  final double _panSensitivity = 1.0;
+  final double _zoomSensitivity = 1.0;
 
   @override
   void initState() {
@@ -37,7 +31,6 @@ class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
     _setupInitialBoundaries();
   }
 
-  // Motor değiştirildiğinde sınırları yeniden hesapla
   @override
   void didUpdateWidget(covariant ViewRecordedGraphPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -130,34 +123,22 @@ class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
               children: [
                 Expanded(
                   child: GestureDetector(
-                    // --- YENİ: onScaleStart metodu ---
-                    // Kullanıcı parmağını ekrana koyduğu an çalışır.
                     onScaleStart: (details) {
-                      // Jest başladığında mevcut sınırları kaydediyoruz.
                       _gestureStartMinX = _minX;
                       _gestureStartMaxX = _maxX;
                       _gestureStartMinY = _minY;
                       _gestureStartMaxY = _maxY;
                     },
-                    // --- GÜNCELLENMİŞ: onScaleUpdate metodu ---
                     onScaleUpdate: (details) {
                       if (context.size == null) return;
-
-                      // Mevcut görünen aralığı al
                       final gestureXRange =
                           _gestureStartMaxX - _gestureStartMinX;
                       final gestureYRange =
                           _gestureStartMaxY - _gestureStartMinY;
-
-                      // Yakınlaştırma (Pinch) hesaplaması
-                      // `details.scale` 1.0'dan farklıysa zoom yapılıyor demektir.
                       final newXRange =
                           gestureXRange / (details.scale * _zoomSensitivity);
                       final newYRange =
                           gestureYRange / (details.scale * _zoomSensitivity);
-
-                      // Kaydırma (Pan) hesaplaması
-                      // Parmak hareketinin pixel cinsinden karşılığını veri birimine çeviriyoruz.
                       final dx =
                           details.focalPointDelta.dx *
                           (gestureXRange / context.size!.width) *
@@ -166,23 +147,17 @@ class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
                           details.focalPointDelta.dy *
                           (gestureYRange / context.size!.height) *
                           _panSensitivity;
-
-                      // Yeni sınırları, jestin başlangıç durumuna göre hesaplıyoruz.
                       final newMinX =
                           _gestureStartMinX -
                           dx -
                           (newXRange - gestureXRange) / 2;
                       final newMaxX = newMinX + newXRange;
-
                       final newMinY =
                           _gestureStartMinY +
                           dy -
                           (newYRange - gestureYRange) / 2;
                       final newMaxY = newMinY + newYRange;
-
                       setState(() {
-                        // Sınır kontrolleri
-                        // Çok fazla yakınlaşmayı veya çok fazla uzaklaşmayı engelle
                         if ((newMaxX - newMinX) <
                                 (_initialMaxX - _initialMinX) * 5 &&
                             (newMaxX - newMinX) > 0.01) {
@@ -212,8 +187,27 @@ class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
     );
   }
 
-  // buildInteractiveChartData ve buildMotorSelector metodları aynı kalabilir.
+  // ============== TEK DEĞİŞİKLİK BU METODUN İÇİNDE ==============
   LineChartData _buildInteractiveChartData() {
+    // === LİDERİN DOKUNUŞU: TUTARLILIK SAĞLANDI ===
+    // 1. Toplam kayıt süresini alıyoruz.
+    // Kaydedilen verinin son noktasının 'x' değeri bize toplam süreyi verir.
+    double totalDuration = 0;
+    if (_selectedMotorData.isNotEmpty) {
+      totalDuration = _selectedMotorData.last.x;
+    }
+
+    // 2. Tıpkı canlı grafikteki gibi, X ekseni aralığını hesaplıyoruz.
+    // Toplam süreyi 5'e bölerek "akıllı" aralığı buluyoruz.
+    double bottomTitleInterval = totalDuration / 5.0;
+
+    // 3. Güvenlik kontrolü: Eğer süre çok kısa veya 0 ise,
+    // varsayılan bir aralık kullan.
+    if (bottomTitleInterval <= 0) {
+      bottomTitleInterval = 1.0;
+    }
+    // ==========================================================
+
     return LineChartData(
       minX: _minX,
       maxX: _maxX,
@@ -247,6 +241,8 @@ class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 30,
+            // 4. Dinamik olarak hesapladığımız aralığı burada kullanıyoruz.
+            interval: bottomTitleInterval,
             getTitlesWidget: (value, meta) => Text(
               value.toStringAsFixed(0),
               style: const TextStyle(color: Colors.white70, fontSize: 12),
