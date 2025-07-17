@@ -1,10 +1,11 @@
-// lib/pages/saved_graphs_page.dart
+// lib/pages/saved_graphs_page.dart (GÜNCELLENMİŞ HALİ)
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:uptime_monitor_final/recorded_session.dart'; // Yolunuzu ayarlayın
-import 'package:uptime_monitor_final/view_recorded_graph_page.dart'; // Yeni sayfayı import edin (oluşturacağız)
+import 'package:uptime_monitor_final/recorded_session.dart';
+import 'package:uptime_monitor_final/view_recorded_graph_page.dart';
 
 class SavedGraphsPage extends StatefulWidget {
   const SavedGraphsPage({super.key});
@@ -24,14 +25,11 @@ class _SavedGraphsPageState extends State<SavedGraphsPage> {
   }
 
   Future<void> _loadSavedSessions() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
       final directory = await getApplicationDocumentsDirectory();
       final files = directory.listSync().whereType<File>().where(
-        (file) => file.path.endsWith('.json') && file.path.contains('session_'),
+        (file) => file.path.endsWith('.json'),
       );
 
       List<RecordedSession> loadedSessions = [];
@@ -39,45 +37,48 @@ class _SavedGraphsPageState extends State<SavedGraphsPage> {
         try {
           final jsonString = await file.readAsString();
           final jsonMap = jsonDecode(jsonString);
-          loadedSessions.add(RecordedSession.fromJson(jsonMap));
+          if (jsonMap.containsKey('id') && jsonMap.containsKey('timestamp')) {
+            loadedSessions.add(RecordedSession.fromJson(jsonMap));
+          }
         } catch (e) {
-          print('Error loading session from ${file.path}: $e');
+          print('Oturum yüklenirken hata oluştu ${file.path}: $e');
         }
       }
 
-      // En yeni oturumlar üstte olacak şekilde sırala
       loadedSessions.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-      setState(() {
-        _savedSessions = loadedSessions;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('Error accessing application directory: $e');
-      setState(() {
-        _isLoading = false;
-      });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Kaydedilen oturumlar yüklenirken hata oluştu: $e'),
-          ),
-        );
+        setState(() {
+          _savedSessions = loadedSessions;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Kayıtlar yüklenemedi: $e')));
       }
     }
   }
 
-  // YENİ: Oturum silme fonksiyonu
-  Future<void> _deleteSession(String sessionId) async {
+  // --- SİLME FONKSİYONU (GÜNCELLENDİ) ---
+  Future<void> _deleteSession(RecordedSession session) async {
     try {
       final directory = await getApplicationDocumentsDirectory();
-      final fileName =
-          'session_${sessionId.replaceAll(':', '-')}.json'; // Dosya adı formatı önemli
+
+      // === DEĞİŞİKLİK BURADA ===
+      // Dosya adını, tıpkı kaydederken olduğu gibi, session.id kullanarak oluşturuyoruz.
+      final fileName = 'session_${session.id}.json';
       final file = File('${directory.path}/$fileName');
+      // ========================
 
       if (await file.exists()) {
         await file.delete();
-        await _loadSavedSessions(); // Listeyi yeniden yükle
+        // Listeyi yeniden yüklemek yerine state'ten çıkarıyoruz (daha verimli).
+        setState(() {
+          _savedSessions.removeWhere((s) => s.id == session.id);
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Oturum başarıyla silindi.')),
@@ -86,18 +87,17 @@ class _SavedGraphsPageState extends State<SavedGraphsPage> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Silinecek oturum dosyası bulunamadı.'),
+            SnackBar(
+              content: Text('Hata: Dosya bulunamadı!\nAranan: $fileName'),
             ),
           );
         }
       }
     } catch (e) {
-      print('Oturum silinirken hata oluştu: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Oturum silinirken hata oluştu: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Oturum silinirken hata: $e')));
       }
     }
   }
@@ -140,7 +140,7 @@ class _SavedGraphsPageState extends State<SavedGraphsPage> {
                   elevation: 4,
                   child: ListTile(
                     title: Text(
-                      'Oturum: ${session.timestamp.toLocal().toIso8601String().split('.')[0].replaceAll('T', ' ')}',
+                      'Oturum: ${session.timestamp.toLocal().toString().substring(0, 16)}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -155,40 +155,38 @@ class _SavedGraphsPageState extends State<SavedGraphsPage> {
                       onPressed: () async {
                         final bool? confirm = await showDialog<bool>(
                           context: context,
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              backgroundColor: const Color(0xFF1A1A2E),
-                              title: const Text(
-                                'Oturumu Sil',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              content: const Text(
-                                'Bu oturumu silmek istediğinizden emin misiniz?',
-                                style: TextStyle(color: Colors.white70),
-                              ),
-                              actions: <Widget>[
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(false),
-                                  child: const Text(
-                                    'İptal',
-                                    style: TextStyle(color: Colors.blueAccent),
-                                  ),
+                          builder: (BuildContext context) => AlertDialog(
+                            backgroundColor: const Color(0xFF1A1A2E),
+                            title: const Text(
+                              'Oturumu Sil',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            content: const Text(
+                              'Bu oturumu silmek istediğinizden emin misiniz?',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text(
+                                  'İptal',
+                                  style: TextStyle(color: Colors.blueAccent),
                                 ),
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(true),
-                                  child: const Text(
-                                    'Sil',
-                                    style: TextStyle(color: Colors.redAccent),
-                                  ),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text(
+                                  'Sil',
+                                  style: TextStyle(color: Colors.redAccent),
                                 ),
-                              ],
-                            );
-                          },
+                              ),
+                            ],
+                          ),
                         );
                         if (confirm == true) {
-                          _deleteSession(session.id);
+                          _deleteSession(session);
                         }
                       },
                     ),

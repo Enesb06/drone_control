@@ -1,289 +1,319 @@
-// lib/pages/view_recorded_graph_page.dart
+// lib/pages/view_recorded_graph_page.dart (GÜNCELLENMİŞ)
+
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'dart:math';
-import 'package:uptime_monitor_final/recorded_session.dart'; // Yolunuzu ayarlayın
+import 'package:uptime_monitor_final/recorded_session.dart';
 
 class ViewRecordedGraphPage extends StatefulWidget {
   final RecordedSession session;
 
-  const ViewRecordedGraphPage({super.key, required this.session});
+  const ViewRecordedGraphPage({Key? key, required this.session})
+    : super(key: key);
 
   @override
-  State<ViewRecordedGraphPage> createState() => _ViewRecordedGraphPageState();
+  _ViewRecordedGraphPageState createState() => _ViewRecordedGraphPageState();
 }
 
 class _ViewRecordedGraphPageState extends State<ViewRecordedGraphPage> {
-  int _currentPageIndex = 0; // 0: MTR1, 1: MTR2, 2: MTR3, 3: MTR4
+  int _selectedIndex = 0;
 
-  // Motor verilerini RecordedSession'dan alıyoruz
-  late final List<FlSpot> _motor1Data;
-  late final List<FlSpot> _motor2Data;
-  late final List<FlSpot> _motor3Data;
-  late final List<FlSpot> _motor4Data;
+  // --- MEVCUT SINIR DEĞİŞKENLERİ ---
+  late double _minX, _maxX, _minY, _maxY;
+  late double _initialMinX, _initialMaxX, _initialMinY, _initialMaxY;
+
+  // --- YENİ: JEST BAŞLANGIÇ DURUMUNU TUTAN DEĞİŞKENLER ---
+  double _gestureStartMinX = 0, _gestureStartMaxX = 0;
+  double _gestureStartMinY = 0, _gestureStartMaxY = 0;
+
+  // --- YENİ: HASSASİYET AYARLARI (Bu değerlerle oynayarak en iyi sonucu bulabilirsiniz) ---
+  final double _panSensitivity = 1.0; // Kaydırma hassasiyeti. 1.0 standart.
+  final double _zoomSensitivity =
+      1.0; // Yakınlaştırma hassasiyeti. 1.0 standart.
 
   @override
   void initState() {
     super.initState();
-    _motor1Data = widget.session.motor1Data;
-    _motor2Data = widget.session.motor2Data;
-    _motor3Data = widget.session.motor3Data;
-    _motor4Data = widget.session.motor4Data;
+    _setupInitialBoundaries();
   }
 
-  // Sayfaların başlıklarını döndüren yardımcı fonksiyon
-  String _getPageTitle(int index) {
-    switch (index) {
-      case 0:
-        return "MOTOR1 (Tester Sinyali 1)";
-      case 1:
-        return "MOTOR2 (Tester Sinyali 2)";
-      case 2:
-        return "MOTOR3 (Sinüs Dalgası)";
-      case 3:
-        return "MOTOR4 (Kare Dalga)";
-      default:
-        return "Bilinmeyen Motor";
+  // Motor değiştirildiğinde sınırları yeniden hesapla
+  @override
+  void didUpdateWidget(covariant ViewRecordedGraphPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.session.id != oldWidget.session.id) {
+      _setupInitialBoundaries();
     }
+  }
+
+  void _setupInitialBoundaries() {
+    final allData = _getAllDataPoints();
+    if (allData.isEmpty) {
+      _initialMinX = 0;
+      _initialMaxX = 30;
+      _initialMinY = 0;
+      _initialMaxY = 100;
+    } else {
+      _initialMinX = allData.map((e) => e.x).reduce(min);
+      _initialMaxX = allData.map((e) => e.x).reduce(max);
+      _initialMinY = allData.map((e) => e.y).reduce(min);
+      _initialMaxY = allData.map((e) => e.y).reduce(max);
+
+      final xPadding = (_initialMaxX - _initialMinX) * 0.05;
+      final yPadding = (_initialMaxY - _initialMinY) * 0.1;
+      _initialMinX -= xPadding;
+      _initialMaxX += xPadding;
+      _initialMinY -= yPadding;
+      _initialMaxY += yPadding;
+    }
+    _resetZoom();
+  }
+
+  List<FlSpot> _getAllDataPoints() {
+    return [
+      ...widget.session.motor1Data,
+      ...widget.session.motor2Data,
+      ...widget.session.motor3Data,
+      ...widget.session.motor4Data,
+    ];
+  }
+
+  List<FlSpot> get _selectedMotorData {
+    switch (_selectedIndex) {
+      case 0:
+        return widget.session.motor1Data;
+      case 1:
+        return widget.session.motor2Data;
+      case 2:
+        return widget.session.motor3Data;
+      case 3:
+        return widget.session.motor4Data;
+      default:
+        return [];
+    }
+  }
+
+  void _resetZoom() {
+    setState(() {
+      _minX = _initialMinX;
+      _maxX = _initialMaxX;
+      _minY = _initialMinY;
+      _maxY = _initialMaxY;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Grafiğin X ekseni aralığını belirle
-    double minX = 0;
-    double maxX = 0;
-
-    // Tüm motor verilerinden en büyük X değerini bul
-    final allData = [
-      ..._motor1Data,
-      ..._motor2Data,
-      ..._motor3Data,
-      ..._motor4Data,
-    ];
-
-    if (allData.isNotEmpty) {
-      allData.sort((a, b) => a.x.compareTo(b.x)); // X değerine göre sırala
-      minX = allData.first.x;
-      maxX = allData.last.x;
-    } else {
-      // Veri yoksa varsayılan bir aralık belirle
-      minX = 0;
-      maxX = 5; // Örneğin 5 saniye
-    }
-
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: Text('${_getPageTitle(_currentPageIndex)} (Kaydedildi)'),
+        title: Text(
+          'Oturum: ${widget.session.timestamp.toLocal().toString().substring(0, 16)}',
+        ),
         backgroundColor: const Color(0xFF161625),
-        elevation: 4,
-      ),
-      body: Column(
-        children: [
-          // Sayfa Seçim Butonları
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildPageButton(0, "MTR1"),
-                const SizedBox(width: 8),
-                _buildPageButton(1, "MTR2"),
-                const SizedBox(width: 8),
-                _buildPageButton(2, "MTR3"),
-                const SizedBox(width: 8),
-                _buildPageButton(3, "MTR4"),
-              ],
-            ),
-          ),
-          Expanded(
-            child: IndexedStack(
-              index: _currentPageIndex,
-              children: [
-                // Her sayfa için kaydedilmiş veriyi kullanarak grafik oluştur
-                _buildGraphContent(
-                  _motor1Data,
-                  minX,
-                  maxX,
-                ), // Motor 1'in kaydedilen verisi
-                _buildGraphContent(
-                  _motor2Data,
-                  minX,
-                  maxX,
-                ), // Motor 2'nin kaydedilen verisi
-                _buildGraphContent(
-                  _motor3Data,
-                  minX,
-                  maxX,
-                ), // Motor 3'ün kaydedilen verisi
-                _buildGraphContent(
-                  _motor4Data,
-                  minX,
-                  maxX,
-                ), // Motor 4'ün kaydedilen verisi
-              ],
-            ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.zoom_out_map),
+            tooltip: "Görünümü Sıfırla",
+            onPressed: _resetZoom,
           ),
         ],
       ),
-    );
-  }
-
-  // Sayfa butonları için yardımcı widget
-  Widget _buildPageButton(int index, String text) {
-    return ElevatedButton(
-      onPressed: () {
-        setState(() {
-          _currentPageIndex = index;
-        });
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: _currentPageIndex == index
-            ? Colors.blueAccent
-            : Colors.grey[700],
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-      ),
-      child: Text(text),
-    );
-  }
-
-  // --- Her sayfa için kullanılacak grafik içeriği ---
-  // Hangi veri listesini göstereceğini parametre olarak alıyor
-  Widget _buildGraphContent(
-    List<FlSpot> spotsToDisplay,
-    double minX,
-    double maxX,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 0.0,
-        left: 16.0,
-        right: 16.0,
-        bottom: 16.0,
-      ),
-      child: Column(
-        children: [Expanded(child: _buildChart(minX, maxX, spotsToDisplay))],
-      ),
-    );
-  }
-
-  // Statik Grafik Oluşturucu Widget'ı (Canlı grafiğe benziyor ama zaman kaydırması yok)
-  Widget _buildChart(
-    double currentMinX,
-    double currentMaxX,
-    List<FlSpot> spots,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: const Color(0xFF161625).withOpacity(0.5),
-      ),
-      child: spots.isEmpty
+      body: _selectedMotorData.isEmpty
           ? const Center(
               child: Text(
-                'Bu oturum için kaydedilmiş veri yok.',
+                "Bu oturum için veri bulunamadı.",
                 style: TextStyle(color: Colors.white54),
               ),
             )
-          : Padding(
-              padding: const EdgeInsets.only(right: 20.0, top: 20, bottom: 10),
-              child: LineChart(
-                LineChartData(
-                  minY: 0,
-                  maxY: 5,
-                  minX: currentMinX,
-                  maxX: currentMaxX,
-                  titlesData: FlTitlesData(
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        interval: 1.0,
-                        getTitlesWidget: leftTitleWidgets,
-                      ),
-                    ),
-                    rightTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 30,
-                        interval: 1.0,
-                        getTitlesWidget: bottomTitleWidgets,
+          : Column(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    // --- YENİ: onScaleStart metodu ---
+                    // Kullanıcı parmağını ekrana koyduğu an çalışır.
+                    onScaleStart: (details) {
+                      // Jest başladığında mevcut sınırları kaydediyoruz.
+                      _gestureStartMinX = _minX;
+                      _gestureStartMaxX = _maxX;
+                      _gestureStartMinY = _minY;
+                      _gestureStartMaxY = _maxY;
+                    },
+                    // --- GÜNCELLENMİŞ: onScaleUpdate metodu ---
+                    onScaleUpdate: (details) {
+                      if (context.size == null) return;
+
+                      // Mevcut görünen aralığı al
+                      final gestureXRange =
+                          _gestureStartMaxX - _gestureStartMinX;
+                      final gestureYRange =
+                          _gestureStartMaxY - _gestureStartMinY;
+
+                      // Yakınlaştırma (Pinch) hesaplaması
+                      // `details.scale` 1.0'dan farklıysa zoom yapılıyor demektir.
+                      final newXRange =
+                          gestureXRange / (details.scale * _zoomSensitivity);
+                      final newYRange =
+                          gestureYRange / (details.scale * _zoomSensitivity);
+
+                      // Kaydırma (Pan) hesaplaması
+                      // Parmak hareketinin pixel cinsinden karşılığını veri birimine çeviriyoruz.
+                      final dx =
+                          details.focalPointDelta.dx *
+                          (gestureXRange / context.size!.width) *
+                          _panSensitivity;
+                      final dy =
+                          details.focalPointDelta.dy *
+                          (gestureYRange / context.size!.height) *
+                          _panSensitivity;
+
+                      // Yeni sınırları, jestin başlangıç durumuna göre hesaplıyoruz.
+                      final newMinX =
+                          _gestureStartMinX -
+                          dx -
+                          (newXRange - gestureXRange) / 2;
+                      final newMaxX = newMinX + newXRange;
+
+                      final newMinY =
+                          _gestureStartMinY +
+                          dy -
+                          (newYRange - gestureYRange) / 2;
+                      final newMaxY = newMinY + newYRange;
+
+                      setState(() {
+                        // Sınır kontrolleri
+                        // Çok fazla yakınlaşmayı veya çok fazla uzaklaşmayı engelle
+                        if ((newMaxX - newMinX) <
+                                (_initialMaxX - _initialMinX) * 5 &&
+                            (newMaxX - newMinX) > 0.01) {
+                          _minX = newMinX;
+                          _maxX = newMaxX;
+                        }
+                        if ((newMaxY - newMinY) <
+                                (_initialMaxY - _initialMinY) * 5 &&
+                            (newMaxY - newMinY) > 0.01) {
+                          _minY = newMinY;
+                          _maxY = newMaxY;
+                        }
+                      });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: LineChart(
+                        _buildInteractiveChartData(),
+                        duration: Duration.zero,
                       ),
                     ),
                   ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: true,
-                    getDrawingHorizontalLine: (value) =>
-                        const FlLine(color: Colors.white10, strokeWidth: 1),
-                    getDrawingVerticalLine: (value) =>
-                        const FlLine(color: Colors.white10, strokeWidth: 1),
-                  ),
-                  borderData: FlBorderData(
-                    show: true,
-                    border: Border.all(
-                      color: const Color(0xff37434d),
-                      width: 1,
-                    ),
-                  ),
-                  clipData: const FlClipData.all(),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      isCurved: true,
-                      color: Colors.cyan,
-                      barWidth: 3,
-                      isStrokeCapRound: true,
-                      dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: Colors.cyan.withOpacity(0.2),
-                      ),
-                    ),
-                  ],
                 ),
-                // Kaydedilmiş grafiklerde animasyon olmamalı
-                duration: Duration.zero,
-              ),
+                _buildMotorSelector(),
+              ],
             ),
     );
   }
 
-  Widget leftTitleWidgets(double value, TitleMeta meta) {
-    const style = TextStyle(
-      color: Colors.white70,
-      fontWeight: FontWeight.bold,
-      fontSize: 14,
+  // buildInteractiveChartData ve buildMotorSelector metodları aynı kalabilir.
+  LineChartData _buildInteractiveChartData() {
+    return LineChartData(
+      minX: _minX,
+      maxX: _maxX,
+      minY: _minY,
+      maxY: _maxY,
+      lineTouchData: LineTouchData(
+        handleBuiltInTouches: true,
+        touchTooltipData: LineTouchTooltipData(
+          tooltipBgColor: Colors.blueGrey.withOpacity(0.8),
+        ),
+      ),
+      gridData: FlGridData(
+        show: true,
+        getDrawingHorizontalLine: (value) =>
+            const FlLine(color: Colors.white12, strokeWidth: 0.5),
+        getDrawingVerticalLine: (value) =>
+            const FlLine(color: Colors.white12, strokeWidth: 0.5),
+      ),
+      titlesData: FlTitlesData(
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 45,
+            getTitlesWidget: (value, meta) => Text(
+              value.toStringAsFixed(0),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ),
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 30,
+            getTitlesWidget: (value, meta) => Text(
+              value.toStringAsFixed(0),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: false),
+        ),
+      ),
+      borderData: FlBorderData(
+        show: true,
+        border: Border.all(color: Colors.white24),
+      ),
+      lineBarsData: [
+        LineChartBarData(
+          spots: _selectedMotorData,
+          isCurved: true,
+          color: Colors.tealAccent,
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            color: Colors.tealAccent.withOpacity(0.2),
+          ),
+        ),
+      ],
     );
-    String text;
-    if (value.toInt() == value && value >= 0.0 && value <= 5.0) {
-      text = value.toInt().toString();
-    } else {
-      return Container();
-    }
-    return Text(text, style: style, textAlign: TextAlign.center);
   }
 
-  Widget bottomTitleWidgets(double value, TitleMeta meta) {
-    const style = TextStyle(
-      color: Colors.white70,
-      fontWeight: FontWeight.bold,
-      fontSize: 12,
-    );
-    String text = value.round().toString();
-    return SideTitleWidget(
-      axisSide: meta.axisSide,
-      space: 4.0,
-      child: Text(text, style: style),
+  Widget _buildMotorSelector() {
+    return BottomNavigationBar(
+      currentIndex: _selectedIndex,
+      onTap: (index) {
+        setState(() {
+          _selectedIndex = index;
+          _resetZoom(); // Motor değiştirildiğinde zoom'u sıfırla
+        });
+      },
+      backgroundColor: const Color(0xFF161625),
+      items: const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.developer_board_outlined),
+          activeIcon: Icon(Icons.developer_board),
+          label: "Motor 1",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.developer_board_outlined),
+          activeIcon: Icon(Icons.developer_board),
+          label: "Motor 2",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.developer_board_outlined),
+          activeIcon: Icon(Icons.developer_board),
+          label: "Motor 3",
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.developer_board_outlined),
+          activeIcon: Icon(Icons.developer_board),
+          label: "Motor 4",
+        ),
+      ],
+      selectedItemColor: Colors.tealAccent,
+      unselectedItemColor: Colors.grey,
+      type: BottomNavigationBarType.fixed,
     );
   }
 }
