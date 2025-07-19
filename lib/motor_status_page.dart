@@ -7,6 +7,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+// Projenizin yapısına göre import yolunu kontrol edin.
 import 'package:uptime_monitor_final/recorded_session.dart';
 
 // ----- UUID'ler -----
@@ -52,8 +53,6 @@ class _MotorStatusPageState extends State<MotorStatusPage>
   double _globalTime = 0;
   final int _dataPointIntervalMs = 100;
   final int _displaySeconds = 5;
-  // === DEĞİŞTİ: Bu satırı artık kullanmıyoruz ama referans için burada bırakabiliriz ===
-  // final int _maxDataPoints = 500; // ESKİ SINIRLAMA
   Timer? _graphStopTimer;
   final int _graphDurationSeconds = 60;
   bool _isGraphRunning = true;
@@ -83,6 +82,100 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     super.dispose();
   }
 
+  // ==========================================================
+  // YENİ EKLENEN KOD BÖLÜMÜ
+  // ==========================================================
+
+  /// Akışı manuel olarak durdurur ve kullanıcıya kaydetme seçeneği sunar.
+  void _stopRecordingAndPromptSave() {
+    if (!_isGraphRunning) return; // Zaten durmuşsa işlem yapma
+
+    // Otomatik durdurma sayacını iptal et
+    _graphStopTimer?.cancel();
+
+    // Veri aboneliklerini iptal et
+    _dataSubscription1?.cancel();
+    _dataSubscription2?.cancel();
+    _dataSubscription3?.cancel();
+    _dataSubscription4?.cancel();
+
+    // Akışı ve grafiği durdur
+    setState(() {
+      _isGraphRunning = false;
+    });
+
+    // Kaydetme dialog'unu göster
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showSaveSessionDialog();
+    });
+  }
+
+  /// Kullanıcıya oturumu kaydetmek isteyip istemediğini soran dialog'u gösterir.
+  Future<void> _showSaveSessionDialog() async {
+    // Eğer hiç veri toplanmamışsa, sormaya gerek yok.
+    if (_liveDataSpots1.isEmpty &&
+        _liveDataSpots2.isEmpty &&
+        _liveDataSpots3.isEmpty &&
+        _liveDataSpots4.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kayıt durduruldu. Kaydedilecek veri yok.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final bool? shouldSave = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // Kullanıcı bir seçim yapmak zorunda
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Text(
+            'Oturumu Kaydet',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Bu kayıt oturumunu kaydetmek istiyor musunuz?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text(
+                'Kaydetme',
+                style: TextStyle(color: Colors.white70),
+              ),
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+            ElevatedButton(
+              child: const Text('Kaydet'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 247, 247, 248),
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldSave == true) {
+      _saveGraphData(); // Mevcut kaydetme fonksiyonunu çağır
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Oturum kaydedilmedi.')));
+      }
+    }
+  }
+
+  // ==========================================================
+  // MEVCUT KOD (DEĞİŞİKLİK YOK)
+  // ==========================================================
+
   void _toggleMenuVisibility() {
     setState(() {
       _isMenuVisible = !_isMenuVisible;
@@ -104,14 +197,17 @@ class _MotorStatusPageState extends State<MotorStatusPage>
 
   void _startGraphStopTimer() {
     _graphStopTimer = Timer(Duration(seconds: _graphDurationSeconds), () {
-      if (mounted) {
-        setState(() {
-          _isGraphRunning = false;
-        });
+      if (mounted && _isGraphRunning) {
+        // Otomatik durdurma tetiklendiğinde abonelikleri iptal et
         _dataSubscription1?.cancel();
         _dataSubscription2?.cancel();
         _dataSubscription3?.cancel();
         _dataSubscription4?.cancel();
+
+        setState(() {
+          _isGraphRunning = false;
+        });
+
         if (!_dataSaved) {
           _saveGraphData();
         }
@@ -190,65 +286,54 @@ class _MotorStatusPageState extends State<MotorStatusPage>
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Servis keşfi hatası: $e')));
         Navigator.of(context).pop();
       }
     }
   }
 
-  // ============== ÇÖZÜMÜN UYGULANDIĞI YERLER ==============
   void _handleLiveData1(List<int> value) {
-    if (_isGraphRunning && value.length == 4) {
-      final byteData = ByteData.sublistView(Uint8List.fromList(value));
-      final double newYValue = byteData.getFloat32(0, Endian.little);
-      setState(() {
-        _globalTime += (_dataPointIntervalMs / 1000.0);
-        final newSpot = FlSpot(_globalTime, newYValue);
-        _liveDataSpots1.add(newSpot);
-        // if (_liveDataSpots1.length > _maxDataPoints) // BU SATIR KALDIRILDI
-        //   _liveDataSpots1.removeAt(0);
-      });
-    }
+    if (!_isGraphRunning || value.length != 4) return;
+    final byteData = ByteData.sublistView(Uint8List.fromList(value));
+    final double newYValue = byteData.getFloat32(0, Endian.little);
+    setState(() {
+      _globalTime += (_dataPointIntervalMs / 1000.0);
+      final newSpot = FlSpot(_globalTime, newYValue);
+      _liveDataSpots1.add(newSpot);
+    });
   }
 
   void _handleLiveData2(List<int> value) {
-    if (_isGraphRunning && value.length == 4) {
-      final byteData = ByteData.sublistView(Uint8List.fromList(value));
-      final double newYValue = byteData.getFloat32(0, Endian.little);
-      setState(() {
-        final newSpot = FlSpot(_globalTime, newYValue);
-        _liveDataSpots2.add(newSpot);
-        // if (_liveDataSpots2.length > _maxDataPoints) // BU SATIR KALDIRILDI
-        //   _liveDataSpots2.removeAt(0);
-      });
-    }
+    if (!_isGraphRunning || value.length != 4) return;
+    final byteData = ByteData.sublistView(Uint8List.fromList(value));
+    final double newYValue = byteData.getFloat32(0, Endian.little);
+    setState(() {
+      final newSpot = FlSpot(_globalTime, newYValue);
+      _liveDataSpots2.add(newSpot);
+    });
   }
 
   void _handleLiveData3(List<int> value) {
-    if (_isGraphRunning && value.length == 4) {
-      final byteData = ByteData.sublistView(Uint8List.fromList(value));
-      final double newYValue = byteData.getFloat32(0, Endian.little);
-      setState(() {
-        final newSpot = FlSpot(_globalTime, newYValue);
-        _liveDataSpots3.add(newSpot);
-        // if (_liveDataSpots3.length > _maxDataPoints) // BU SATIR KALDIRILDI
-        //   _liveDataSpots3.removeAt(0);
-      });
-    }
+    if (!_isGraphRunning || value.length != 4) return;
+    final byteData = ByteData.sublistView(Uint8List.fromList(value));
+    final double newYValue = byteData.getFloat32(0, Endian.little);
+    setState(() {
+      final newSpot = FlSpot(_globalTime, newYValue);
+      _liveDataSpots3.add(newSpot);
+    });
   }
 
   void _handleLiveData4(List<int> value) {
-    if (_isGraphRunning && value.length == 4) {
-      final byteData = ByteData.sublistView(Uint8List.fromList(value));
-      final double newYValue = byteData.getFloat32(0, Endian.little);
-      setState(() {
-        final newSpot = FlSpot(_globalTime, newYValue);
-        _liveDataSpots4.add(newSpot);
-        // if (_liveDataSpots4.length > _maxDataPoints) // BU SATIR KALDIRILDI
-        //   _liveDataSpots4.removeAt(0);
-      });
-    }
+    if (!_isGraphRunning || value.length != 4) return;
+    final byteData = ByteData.sublistView(Uint8List.fromList(value));
+    final double newYValue = byteData.getFloat32(0, Endian.little);
+    setState(() {
+      final newSpot = FlSpot(_globalTime, newYValue);
+      _liveDataSpots4.add(newSpot);
+    });
   }
-  // ==============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -277,6 +362,14 @@ class _MotorStatusPageState extends State<MotorStatusPage>
         backgroundColor: const Color(0xFF161625),
         elevation: 2,
         actions: [
+          // YENİ BUTON: Sadece grafik çalışırken görünür
+          if (_isGraphRunning)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined),
+              onPressed: _stopRecordingAndPromptSave,
+              tooltip: 'Kaydı Durdur',
+            ),
+
           if (!_dataSaved && !_isSavingData && !_isGraphRunning)
             IconButton(
               icon: const Icon(Icons.save),
@@ -436,15 +529,18 @@ class _MotorStatusPageState extends State<MotorStatusPage>
   }
 
   Widget _buildGraphPageContent(List<FlSpot> spotsToDisplay) {
-    double minX = 0, maxX = _displaySeconds.toDouble();
+    double minX, maxX;
     if (spotsToDisplay.isNotEmpty) {
       if (_isGraphRunning) {
         maxX = _globalTime;
         minX = max(0.0, _globalTime - _displaySeconds);
       } else {
         minX = 0.0;
-        maxX = _graphDurationSeconds.toDouble();
+        maxX = _globalTime > 0 ? _globalTime : _graphDurationSeconds.toDouble();
       }
+    } else {
+      minX = 0.0;
+      maxX = _displaySeconds.toDouble();
     }
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 20, top: 24, bottom: 12),
@@ -458,14 +554,14 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     List<FlSpot> spots,
   ) {
     double bottomTitleInterval;
+    double effectiveMaxX = _isGraphRunning
+        ? currentMaxX
+        : (_globalTime > 0 ? _globalTime : _graphDurationSeconds.toDouble());
 
     if (_isGraphRunning) {
       bottomTitleInterval = 1.0;
     } else {
-      bottomTitleInterval = _graphDurationSeconds / 5.0;
-      if (bottomTitleInterval <= 0) {
-        bottomTitleInterval = 1.0;
-      }
+      bottomTitleInterval = max(1.0, effectiveMaxX / 5.0);
     }
 
     return Container(
@@ -474,15 +570,17 @@ class _MotorStatusPageState extends State<MotorStatusPage>
         color: const Color(0xFF161625).withOpacity(0.5),
       ),
       child: spots.isEmpty
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
+                  if (_isGraphRunning) const CircularProgressIndicator(),
+                  if (_isGraphRunning) const SizedBox(height: 16),
                   Text(
-                    'Veri bekleniyor...',
-                    style: TextStyle(color: Colors.white54),
+                    _isGraphRunning
+                        ? 'Veri bekleniyor...'
+                        : 'Kayıt durduruldu.',
+                    style: const TextStyle(color: Colors.white54),
                   ),
                 ],
               ),
