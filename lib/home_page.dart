@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:uptime_monitor_final/saved_graphs_page.dart';
 import 'motor_status_page.dart';
+import 'package:uptime_monitor_final/settings_page.dart';
 
 // Bu sabitler projenizin her yerinde aynı kalmalı
 final Guid serviceUuid = Guid("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
@@ -179,6 +180,16 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text(targetDeviceName),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsPage()),
+              );
+            },
+            tooltip: 'Ayarlar',
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {

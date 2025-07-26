@@ -4,10 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'home_page.dart';
+import 'package:uptime_monitor_final/settings_service.dart'; // YENİ IMPORT
 
 void main() async {
   // Bu async/await yapısı izin istemek için daha güvenilirdir.
   WidgetsFlutterBinding.ensureInitialized();
+  await SettingsService().init(); // YENİ EKLENEN KOD: Ayar servisini başlat
   if (Platform.isAndroid) {
     await requestPermissions();
   }

@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 // Projenizin yapısına göre import yolunu kontrol edin.
 import 'package:uptime_monitor_final/recorded_session.dart';
+import 'package:uptime_monitor_final/settings_service.dart';
 
 // ----- UUID'ler -----
 final Guid serviceUuid = Guid("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
@@ -27,6 +28,9 @@ final Guid timeSeriesCharacteristicUuid4 = Guid(
 
 // Veri Tipi Seçimi için Enum
 enum DataType { x_axis, y_axis, z_axis, resultant }
+
+// YENİ ENUM: Motor durumunu belirtmek için
+enum MotorStatus { normal, outOfBounds }
 
 class MotorStatusPage extends StatefulWidget {
   final BluetoothDevice device;
@@ -62,12 +66,33 @@ class _MotorStatusPageState extends State<MotorStatusPage>
   bool _isMenuVisible = true;
   final double _menuWidth = 100.0;
 
+  // ===== YENİ STATE DEĞİŞKENLERİ =====
+  final _settingsService = SettingsService();
+  late double _minValue;
+  late double _maxValue;
+
+  // Her motor için ayrı durum takibi
+  MotorStatus _motor1Status = MotorStatus.normal;
+  MotorStatus _motor2Status = MotorStatus.normal;
+  MotorStatus _motor3Status = MotorStatus.normal;
+  MotorStatus _motor4Status = MotorStatus.normal;
+  // ===================================
+
   @override
   void initState() {
     super.initState();
+    _loadSettings(); // Ayarları yükle
     _tabController = TabController(length: 4, vsync: this);
     _setupPage();
     _startGraphStopTimer();
+  }
+
+  // YENİ FONKSİYON: Ayarları hafızadan okur
+  void _loadSettings() {
+    setState(() {
+      _minValue = _settingsService.getMinValue();
+      _maxValue = _settingsService.getMaxValue();
+    });
   }
 
   @override
@@ -298,10 +323,19 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     if (!_isGraphRunning || value.length != 4) return;
     final byteData = ByteData.sublistView(Uint8List.fromList(value));
     final double newYValue = byteData.getFloat32(0, Endian.little);
+
+    // YENİ: Eşik kontrolü
+    final newStatus = (newYValue >= _minValue && newYValue <= _maxValue)
+        ? MotorStatus.normal
+        : MotorStatus.outOfBounds;
+
     setState(() {
       _globalTime += (_dataPointIntervalMs / 1000.0);
       final newSpot = FlSpot(_globalTime, newYValue);
       _liveDataSpots1.add(newSpot);
+      if (_motor1Status != newStatus) {
+        _motor1Status = newStatus;
+      }
     });
   }
 
@@ -309,9 +343,16 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     if (!_isGraphRunning || value.length != 4) return;
     final byteData = ByteData.sublistView(Uint8List.fromList(value));
     final double newYValue = byteData.getFloat32(0, Endian.little);
+    final newStatus = (newYValue >= _minValue && newYValue <= _maxValue)
+        ? MotorStatus.normal
+        : MotorStatus.outOfBounds;
+
     setState(() {
       final newSpot = FlSpot(_globalTime, newYValue);
       _liveDataSpots2.add(newSpot);
+      if (_motor2Status != newStatus) {
+        _motor2Status = newStatus;
+      }
     });
   }
 
@@ -319,9 +360,15 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     if (!_isGraphRunning || value.length != 4) return;
     final byteData = ByteData.sublistView(Uint8List.fromList(value));
     final double newYValue = byteData.getFloat32(0, Endian.little);
+    final newStatus = (newYValue >= _minValue && newYValue <= _maxValue)
+        ? MotorStatus.normal
+        : MotorStatus.outOfBounds;
     setState(() {
       final newSpot = FlSpot(_globalTime, newYValue);
       _liveDataSpots3.add(newSpot);
+      if (_motor3Status != newStatus) {
+        _motor3Status = newStatus;
+      }
     });
   }
 
@@ -329,9 +376,15 @@ class _MotorStatusPageState extends State<MotorStatusPage>
     if (!_isGraphRunning || value.length != 4) return;
     final byteData = ByteData.sublistView(Uint8List.fromList(value));
     final double newYValue = byteData.getFloat32(0, Endian.little);
+    final newStatus = (newYValue >= _minValue && newYValue <= _maxValue)
+        ? MotorStatus.normal
+        : MotorStatus.outOfBounds;
     setState(() {
       final newSpot = FlSpot(_globalTime, newYValue);
       _liveDataSpots4.add(newSpot);
+      if (_motor4Status != newStatus) {
+        _motor4Status = newStatus;
+      }
     });
   }
 
@@ -362,14 +415,12 @@ class _MotorStatusPageState extends State<MotorStatusPage>
         backgroundColor: const Color(0xFF161625),
         elevation: 2,
         actions: [
-          // YENİ BUTON: Sadece grafik çalışırken görünür
           if (_isGraphRunning)
             IconButton(
               icon: const Icon(Icons.stop_circle_outlined),
               onPressed: _stopRecordingAndPromptSave,
               tooltip: 'Kaydı Durdur',
             ),
-
           if (!_dataSaved && !_isSavingData && !_isGraphRunning)
             IconButton(
               icon: const Icon(Icons.save),
@@ -382,6 +433,7 @@ class _MotorStatusPageState extends State<MotorStatusPage>
               child: CircularProgressIndicator(color: Colors.white),
             ),
         ],
+        // TabBar'ı durum göstergeleriyle güncelliyoruz
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.cyanAccent,
@@ -391,11 +443,11 @@ class _MotorStatusPageState extends State<MotorStatusPage>
           onTap: (index) {
             setState(() {});
           },
-          tabs: const [
-            Tab(text: "M1"),
-            Tab(text: "M2"),
-            Tab(text: "M3"),
-            Tab(text: "M4"),
+          tabs: [
+            _buildMotorTab("M1", _motor1Status),
+            _buildMotorTab("M2", _motor2Status),
+            _buildMotorTab("M3", _motor3Status),
+            _buildMotorTab("M4", _motor4Status),
           ],
         ),
       ),
@@ -447,6 +499,40 @@ class _MotorStatusPageState extends State<MotorStatusPage>
                       _buildGraphPageContent(_liveDataSpots4),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // YENİ WIDGET: Motor sekmesini durum göstergesiyle birlikte oluşturan fonksiyon
+  Widget _buildMotorTab(String title, MotorStatus status) {
+    return Tab(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(title),
+          const SizedBox(width: 8),
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: status == MotorStatus.normal
+                  ? Colors.greenAccent
+                  : Colors.redAccent,
+              boxShadow: [
+                BoxShadow(
+                  color:
+                      (status == MotorStatus.normal
+                              ? Colors.greenAccent
+                              : Colors.redAccent)
+                          .withOpacity(0.7),
+                  blurRadius: 4.0,
+                  spreadRadius: 1.0,
                 ),
               ],
             ),
